@@ -657,11 +657,25 @@
             return new Date(date).toISOString().split('T')[0];
         }
 
+        // 找到該日期那週的週一
+        function getMonday(date) {
+            const d = new Date(date);
+            const day = d.getDay();
+            const diff = d.getDate() - day + (day === 0 ? -6 : 1);
+            d.setDate(diff);
+            return d;
+        }
+
+        // 找到該日期那週的週五
+        function getFriday(date) {
+            const monday = getMonday(date);
+            monday.setDate(monday.getDate() + 4);
+            return monday;
+        }
+
         function getDefaultStartDate() {
             const today = new Date();
-            const day = today.getDay();
-            const diff = today.getDate() - day + (day === 0 ? -6 : 1);
-            return new Date(today.setDate(diff));
+            return getMonday(today);
         }
 
         function getTabName(tab) {
@@ -674,8 +688,8 @@
 
         // Tab Management
         function createNewTab(startDate = null, endDate = null) {
-            const start = startDate || getDefaultStartDate();
-            const end = endDate || new Date(new Date(start).setDate(start.getDate() + 27)); // 4 weeks later
+            const start = startDate ? getMonday(startDate) : getDefaultStartDate();
+            const end = endDate ? getFriday(endDate) : new Date(new Date(start).setDate(start.getDate() + 25)); // 到第4週週五
             
             const newTab = {
                 id: generateId(),
@@ -936,19 +950,25 @@
                 document.getElementById('delete-tab-modal').classList.remove('show');
             });
 
-            // Tab content date changes
-            document.getElementById('tab-content').addEventListener('change', (e) => {
+            // Tab content date changes - 用 blur 避免輸入中途觸發，自動調整到週一/週五
+            document.getElementById('tab-content').addEventListener('blur', (e) => {
                 if (e.target.id === 'tab-start-date' || e.target.id === 'tab-end-date') {
                     const tab = getActiveTab();
-                    if (tab) {
-                        if (e.target.id === 'tab-start-date') tab.startDate = e.target.value;
-                        if (e.target.id === 'tab-end-date') tab.endDate = e.target.value;
+                    if (tab && e.target.value) {
+                        if (e.target.id === 'tab-start-date') {
+                            // 起始日自動調整到週一
+                            tab.startDate = formatDateForInput(getMonday(new Date(e.target.value)));
+                        }
+                        if (e.target.id === 'tab-end-date') {
+                            // 結束日自動調整到週五
+                            tab.endDate = formatDateForInput(getFriday(new Date(e.target.value)));
+                        }
                         saveToStorage();
                         renderTabs();
                         renderTabContent();
                     }
                 }
-            });
+            }, true);
 
             // Cell and case tag clicks
             document.addEventListener('click', (e) => {
