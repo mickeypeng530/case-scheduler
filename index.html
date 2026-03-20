@@ -739,6 +739,7 @@
             'sono': 'Sono', 'mri': 'MRI', 'arthro': 'Arthro', 'slot': '空位', 'note': '備註'
         };
         const DEFAULT_SLOTS_PER_CELL = 2;
+        let eventsBound = false;  // 防止重複綁定事件
 
         // Init
         async function init() {
@@ -748,7 +749,12 @@
             }
             renderTabs();
             renderTabContent();
-            setupEventListeners();
+            
+            // 只綁定一次事件
+            if (!eventsBound) {
+                setupEventListeners();
+                eventsBound = true;
+            }
             
             // 初始化 Firebase
             await initFirebase();
@@ -1195,27 +1201,18 @@
 
         // Event Listeners
         function setupEventListeners() {
-            // 手機週切換按鈕（防止重複觸發）
-            let weekNavLock = false;
+            // 手機週切換按鈕
             document.getElementById('prev-week-btn')?.addEventListener('click', (e) => {
                 e.preventDefault();
-                e.stopPropagation();
-                if (weekNavLock) return;
-                weekNavLock = true;
                 state.mobileWeekIndex--;
                 const totalWeeks = document.querySelectorAll('.week-container').length;
                 updateMobileWeekView(totalWeeks);
-                setTimeout(() => { weekNavLock = false; }, 300);
             });
             document.getElementById('next-week-btn')?.addEventListener('click', (e) => {
                 e.preventDefault();
-                e.stopPropagation();
-                if (weekNavLock) return;
-                weekNavLock = true;
                 state.mobileWeekIndex++;
                 const totalWeeks = document.querySelectorAll('.week-container').length;
                 updateMobileWeekView(totalWeeks);
-                setTimeout(() => { weekNavLock = false; }, 300);
             });
             
             // 同步按鈕（手動重新載入）
@@ -1740,7 +1737,6 @@
             renderTabContent();
         }
 
-        init();
     </script>
 </body>
 </html>
