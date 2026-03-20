@@ -1,0 +1,1264 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>案例排程表</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-primary: #0f172a;
+            --bg-secondary: #1e293b;
+            --bg-tertiary: #334155;
+            --text-primary: #f1f5f9;
+            --text-secondary: #94a3b8;
+            --text-muted: #64748b;
+            --border: #475569;
+            
+            --color-ct-nb: #fbbf24;
+            --color-stame: #3b82f6;
+            --color-ctame: #06b6d4;
+            --color-sono: #22c55e;
+            --color-mri: #c4b5fd;
+            --color-arthro: #ec4899;
+            --color-slot: #64748b;
+            --color-blocked: #ef4444;
+            --color-note: #6366f1;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Noto Sans TC', sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container { max-width: 1000px; margin: 0 auto; }
+
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+
+        h1 { font-size: 1.3rem; font-weight: 600; }
+
+        .storage-status { display: flex; align-items: center; gap: 6px; font-size: 0.8rem; color: var(--text-muted); }
+        .storage-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--color-sono); }
+        .storage-dot.saving { background: var(--color-ct-nb); animation: pulse 1s infinite; }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+
+        /* Tabs */
+        .tabs-container {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            margin-bottom: 16px;
+            flex-wrap: wrap;
+            background: var(--bg-secondary);
+            padding: 8px;
+            border-radius: 10px;
+        }
+
+        .tab {
+            padding: 8px 14px;
+            background: transparent;
+            border: none;
+            color: var(--text-secondary);
+            font-family: inherit;
+            font-size: 0.85rem;
+            cursor: pointer;
+            border-radius: 6px;
+            transition: all 0.15s;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .tab:hover { background: var(--bg-tertiary); color: var(--text-primary); }
+        .tab.active { background: var(--color-ct-nb); color: #1a1a2e; font-weight: 600; }
+
+        .tab .close-tab {
+            font-size: 0.75rem;
+            opacity: 0.6;
+            margin-left: 4px;
+        }
+        .tab .close-tab:hover { opacity: 1; }
+
+        .add-tab {
+            padding: 8px 12px;
+            background: transparent;
+            border: 1px dashed var(--border);
+            color: var(--text-muted);
+            font-family: inherit;
+            font-size: 0.85rem;
+            cursor: pointer;
+            border-radius: 6px;
+            transition: all 0.15s;
+        }
+
+        .add-tab:hover { border-color: var(--text-secondary); color: var(--text-secondary); }
+
+        /* Date picker in tab content */
+        .tab-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+            padding: 8px 12px;
+            background: var(--bg-secondary);
+            border-radius: 8px;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .tab-header label { color: var(--text-secondary); font-size: 0.85rem; }
+
+        .tab-header input {
+            background: var(--bg-primary);
+            border: 1px solid var(--border);
+            color: var(--text-primary);
+            padding: 6px 10px;
+            border-radius: 5px;
+            font-family: inherit;
+            font-size: 0.85rem;
+        }
+
+        .tab-header input:focus { outline: none; border-color: var(--color-ct-nb); }
+
+        .tab-name-display {
+            font-weight: 600;
+            font-size: 1rem;
+            color: var(--text-primary);
+        }
+
+        /* Week Container */
+        .week-container {
+            background: var(--bg-secondary);
+            border-radius: 10px;
+            padding: 12px;
+            margin-bottom: 10px;
+            border: 1px solid var(--border);
+        }
+
+        .week-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+            padding-bottom: 6px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .week-title { font-size: 0.9rem; font-weight: 600; }
+        .week-dates { font-size: 0.8rem; color: var(--text-secondary); }
+
+        .schedule-grid {
+            display: grid;
+            grid-template-columns: 40px repeat(5, minmax(0, 1fr));
+            gap: 2px;
+        }
+
+        .grid-header {
+            background: var(--bg-tertiary);
+            padding: 8px 4px;
+            text-align: center;
+            font-weight: 600;
+            font-size: 0.8rem;
+            border-radius: 5px;
+        }
+
+        .grid-header.day-header { display: flex; flex-direction: column; gap: 1px; }
+        .grid-header .day-name { font-size: 0.7rem; color: var(--text-secondary); }
+        .grid-header .day-date { font-size: 0.85rem; }
+
+        .row-label {
+            background: var(--bg-tertiary);
+            padding: 6px 4px;
+            text-align: center;
+            font-weight: 500;
+            font-size: 0.75rem;
+            border-radius: 5px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--text-secondary);
+        }
+
+        .row-label.am { color: #fbbf24; }
+        .row-label.pm { color: #fb923c; }
+
+        .cell {
+            background: var(--bg-primary);
+            border: 2px solid transparent;
+            border-radius: 6px;
+            min-height: 55px;
+            padding: 3px 2px;
+            cursor: pointer;
+            transition: all 0.15s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .cell:hover { background: rgba(255,255,255,0.03); border-color: var(--border); }
+        .cell.selected { border-color: var(--color-ct-nb); background: rgba(251,191,36,0.1); }
+
+        .cell.blocked { background: rgba(239,68,68,0.3); }
+        .cell.blocked::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: repeating-linear-gradient(45deg, transparent, transparent 8px, rgba(239,68,68,0.2) 8px, rgba(239,68,68,0.2) 16px);
+            border-radius: 4px;
+            pointer-events: none;
+        }
+
+        .cases { display: flex; flex-direction: column; gap: 2px; align-items: flex-start; }
+
+        .case-tag {
+            padding: 3px 5px;
+            border-radius: 4px;
+            font-size: 0.7rem;
+            font-weight: 600;
+            display: inline-flex;
+            align-items: center;
+            gap: 3px;
+            cursor: grab;
+            transition: all 0.1s ease;
+            max-width: 100%;
+            overflow: hidden;
+        }
+
+        .case-tag:active { cursor: grabbing; }
+        .case-tag.dragging { opacity: 0.5; }
+        .case-tag.tentative { opacity: 0.6; border: 1px dashed rgba(255,255,255,0.3); }
+
+        .case-tag.ct-nb { background: var(--color-ct-nb); color: #1a1a2e; }
+        .case-tag.stame { background: var(--color-stame); color: white; }
+        .case-tag.ctame { background: var(--color-ctame); color: #1a1a2e; }
+        .case-tag.sono { background: var(--color-sono); color: #1a1a2e; }
+        .case-tag.mri { background: var(--color-mri); color: #1a1a2e; width: 50%; font-size: 0.6rem; padding: 2px 4px; margin-left: auto; }
+        .case-tag.arthro { background: var(--color-arthro); color: white; }
+        .case-tag.slot { background: transparent; color: var(--text-muted); border: 1px dashed var(--border); padding: 2px 4px; font-size: 0.6rem; }
+        .case-tag.note { background: var(--color-note); color: white; }
+
+        .case-info { display: flex; align-items: center; gap: 3px; overflow: hidden; }
+        .case-type { font-weight: 600; font-size: 0.65rem; white-space: nowrap; flex-shrink: 0; }
+        .case-detail { font-size: 0.6rem; opacity: 0.85; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+        .case-actions { display: flex; gap: 2px; opacity: 0; transition: opacity 0.15s; }
+        .case-tag:hover .case-actions { opacity: 1; }
+
+        .case-action-btn {
+            background: rgba(0,0,0,0.2);
+            border: none;
+            color: inherit;
+            width: 16px;
+            height: 16px;
+            border-radius: 3px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.65rem;
+        }
+
+        .case-action-btn:hover { background: rgba(0,0,0,0.4); }
+
+        .blocked-note { font-size: 0.65rem; color: var(--color-blocked); padding: 2px 4px; position: relative; z-index: 1; }
+
+        /* Type Popup */
+        .type-popup {
+            display: none;
+            position: fixed;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 6px;
+            z-index: 50;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+        }
+
+        .type-popup.show { display: block; }
+
+        .type-popup-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 4px;
+        }
+
+        .type-popup-btn {
+            padding: 8px 6px;
+            border: none;
+            border-radius: 5px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.1s ease;
+            font-family: inherit;
+            text-align: center;
+        }
+
+        .type-popup-btn:hover { transform: scale(1.05); }
+
+        .type-popup-btn.ct-nb { background: var(--color-ct-nb); color: #1a1a2e; }
+        .type-popup-btn.stame { background: var(--color-stame); color: white; }
+        .type-popup-btn.ctame { background: var(--color-ctame); color: #1a1a2e; }
+        .type-popup-btn.sono { background: var(--color-sono); color: #1a1a2e; }
+        .type-popup-btn.mri { background: var(--color-mri); color: #1a1a2e; }
+        .type-popup-btn.arthro { background: var(--color-arthro); color: white; }
+        .type-popup-btn.note { background: var(--color-note); color: white; }
+        .type-popup-btn.blocked { background: var(--color-blocked); color: white; }
+
+        /* Modal */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.7);
+            z-index: 100;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-overlay.show { display: flex; }
+
+        .modal {
+            background: var(--bg-secondary);
+            border-radius: 10px;
+            padding: 20px;
+            min-width: 280px;
+            max-width: 90vw;
+            border: 1px solid var(--border);
+        }
+
+        .modal h3 { margin-bottom: 14px; font-size: 1rem; }
+
+        .modal-field { margin-bottom: 12px; }
+        .modal-field label { display: block; margin-bottom: 4px; color: var(--text-secondary); font-size: 0.8rem; }
+
+        .modal-field input, .modal-field select {
+            width: 100%;
+            padding: 8px 10px;
+            border: 1px solid var(--border);
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            border-radius: 5px;
+            font-family: inherit;
+            font-size: 0.9rem;
+        }
+
+        .modal-field input:focus, .modal-field select:focus { outline: none; border-color: var(--color-ct-nb); }
+
+        .modal-buttons { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
+
+        .modal-btn {
+            padding: 8px 16px;
+            border-radius: 5px;
+            font-family: inherit;
+            font-size: 0.85rem;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+
+        .modal-btn.cancel { background: transparent; border: 1px solid var(--border); color: var(--text-secondary); }
+        .modal-btn.cancel:hover { background: var(--bg-tertiary); }
+        .modal-btn.confirm { background: var(--color-ct-nb); border: none; color: #1a1a2e; font-weight: 600; }
+        .modal-btn.confirm:hover { filter: brightness(1.1); }
+        .modal-btn.danger { background: var(--color-blocked); border: none; color: white; }
+
+        .status-toggle { display: flex; gap: 6px; margin-top: 6px; }
+
+        .status-btn {
+            flex: 1;
+            padding: 6px;
+            border: 2px solid var(--border);
+            background: transparent;
+            color: var(--text-secondary);
+            border-radius: 5px;
+            cursor: pointer;
+            font-family: inherit;
+            font-size: 0.8rem;
+            transition: all 0.15s;
+        }
+
+        .status-btn.active { border-color: var(--color-ct-nb); background: rgba(251,191,36,0.1); color: var(--color-ct-nb); }
+        .status-btn:hover:not(.active) { border-color: var(--text-muted); }
+
+        footer { margin-top: 20px; text-align: center; color: var(--text-muted); font-size: 0.75rem; }
+    </style>
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>📋 案例排程表</h1>
+            <div style="display: flex; align-items: center; gap: 12px;">
+                <button id="sync-btn" style="padding: 6px 12px; background: var(--bg-tertiary); border: 1px solid var(--border); color: var(--text-secondary); border-radius: 5px; cursor: pointer; font-family: inherit; font-size: 0.8rem;">🔄 同步</button>
+                <span class="storage-status">
+                    <span class="storage-dot" id="storage-dot"></span>
+                    <span id="storage-text">本地</span>
+                </span>
+            </div>
+        </header>
+
+        <div class="tabs-container" id="tabs-container">
+            <!-- Tabs will be rendered here -->
+            <button class="add-tab" id="add-tab-btn">＋ 新增</button>
+        </div>
+
+        <div id="tab-content"></div>
+
+        <!-- Type Popup -->
+        <div class="type-popup" id="type-popup">
+            <div class="type-popup-grid">
+                <button class="type-popup-btn ct-nb" data-type="ct-nb">CT NB</button>
+                <button class="type-popup-btn stame" data-type="stame">sTAME</button>
+                <button class="type-popup-btn ctame" data-type="ctame">cTAME</button>
+                <button class="type-popup-btn sono" data-type="sono">Sono</button>
+                <button class="type-popup-btn mri" data-type="mri">MRI</button>
+                <button class="type-popup-btn arthro" data-type="arthro">Arthro</button>
+                <button class="type-popup-btn note" data-type="note">📝 備註</button>
+                <button class="type-popup-btn blocked" data-type="blocked">✕ 不可用</button>
+            </div>
+        </div>
+
+        <footer>資料即時同步至 Firebase</footer>
+    </div>
+
+    <!-- Case Modal -->
+    <div class="modal-overlay" id="case-modal">
+        <div class="modal">
+            <h3 id="modal-title">新增案例</h3>
+            <div class="modal-field">
+                <label for="case-time">時間</label>
+                <input type="text" id="case-time" placeholder="例如：09:00" maxlength="5">
+            </div>
+            <div class="modal-field" id="chart-no-field">
+                <label for="chart-no">病歷號</label>
+                <input type="text" id="chart-no" placeholder="選填">
+            </div>
+            <div class="modal-field" id="note-field" style="display: none;">
+                <label for="note-text">備註內容</label>
+                <input type="text" id="note-text" placeholder="例如：前晚值班">
+            </div>
+            <div class="modal-field" id="status-field">
+                <label>狀態</label>
+                <div class="status-toggle">
+                    <button class="status-btn active" data-status="tentative">暫定</button>
+                    <button class="status-btn" data-status="confirmed">確定</button>
+                </div>
+            </div>
+            <div class="modal-buttons">
+                <button class="modal-btn cancel" id="modal-cancel">取消</button>
+                <button class="modal-btn confirm" id="modal-confirm">確定</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Blocked Modal -->
+    <div class="modal-overlay" id="blocked-modal">
+        <div class="modal">
+            <h3>標記不可用</h3>
+            <div class="modal-field">
+                <label for="blocked-reason">原因（選填）</label>
+                <input type="text" id="blocked-reason" placeholder="例如：請假、開會">
+            </div>
+            <div class="modal-buttons">
+                <button class="modal-btn cancel" id="blocked-cancel">取消</button>
+                <button class="modal-btn confirm" id="blocked-confirm">確定</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- New Tab Modal -->
+    <div class="modal-overlay" id="new-tab-modal">
+        <div class="modal">
+            <h3>新增排程</h3>
+            <div class="modal-field">
+                <label for="new-tab-start">起始週一</label>
+                <input type="date" id="new-tab-start">
+            </div>
+            <div class="modal-field">
+                <label for="new-tab-end">結束日期（門診日）</label>
+                <input type="date" id="new-tab-end">
+            </div>
+            <div class="modal-buttons">
+                <button class="modal-btn cancel" id="new-tab-cancel">取消</button>
+                <button class="modal-btn confirm" id="new-tab-confirm">建立</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Delete Tab Confirm -->
+    <div class="modal-overlay" id="delete-tab-modal">
+        <div class="modal">
+            <h3>刪除排程</h3>
+            <p style="margin-bottom: 16px; color: var(--text-secondary);">確定要刪除此排程？資料將無法復原。</p>
+            <div class="modal-buttons">
+                <button class="modal-btn cancel" id="delete-tab-cancel">取消</button>
+                <button class="modal-btn danger" id="delete-tab-confirm">刪除</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ========== Firebase 設定 ==========
+        const FIREBASE_CONFIG = {
+            apiKey: "AIzaSyATCaOlYxkYTle1hPzYAcuXNlQHaAuO3-8",
+            authDomain: "case-scheduler-f752b.firebaseapp.com",
+            projectId: "case-scheduler-f752b",
+            storageBucket: "case-scheduler-f752b.firebasestorage.app",
+            messagingSenderId: "703006186929",
+            appId: "1:703006186929:web:57ac5b059678005455f190",
+            databaseURL: "https://case-scheduler-f752b-default-rtdb.firebaseio.com"
+        };
+        
+        // Firebase 變數
+        let db = null;
+        let firebaseReady = false;
+
+        // State
+        let state = {
+            tabs: [], // [{ id, startDate, endDate }] - 分頁只記錄日期範圍
+            activeTabId: null,
+            selectedCell: null,
+            selectedSlotIndex: null,
+            cellData: {} // 全域案例資料，key 是日期-時段，如 "2024-03-11-AM"
+        };
+
+        const dayNames = ['一', '二', '三', '四', '五'];
+        const caseTypeLabels = {
+            'ct-nb': 'CT NB', 'stame': 'sTAME', 'ctame': 'cTAME',
+            'sono': 'Sono', 'mri': 'MRI', 'arthro': 'Arthro', 'slot': '空位', 'note': '備註'
+        };
+        const DEFAULT_SLOTS_PER_CELL = 2;
+
+        // Init
+        async function init() {
+            loadFromLocalStorage();
+            if (state.tabs.length === 0) {
+                createNewTab();
+            }
+            renderTabs();
+            renderTabContent();
+            setupEventListeners();
+            
+            // 初始化 Firebase
+            await initFirebase();
+        }
+
+        async function initFirebase() {
+            try {
+                showStatus('連線中...', true);
+                firebase.initializeApp(FIREBASE_CONFIG);
+                db = firebase.database();
+                firebaseReady = true;
+                
+                // 監聽雲端資料變化（即時同步）
+                db.ref('scheduler').on('value', (snapshot) => {
+                    const data = snapshot.val();
+                    if (data) {
+                        state.tabs = data.tabs || [];
+                        state.activeTabId = data.activeTabId || (state.tabs[0]?.id || null);
+                        state.cellData = data.cellData || {};
+                        saveToLocalStorage();
+                        renderTabs();
+                        renderTabContent();
+                    }
+                    showStatus('已同步', false);
+                });
+            } catch (error) {
+                console.error('Firebase 初始化失敗:', error);
+                showStatus('離線模式', false);
+            }
+        }
+
+        function loadFromLocalStorage() {
+            const saved = localStorage.getItem('caseSchedulerV2');
+            if (saved) {
+                const parsed = JSON.parse(saved);
+                state.tabs = parsed.tabs || [];
+                state.activeTabId = parsed.activeTabId || (state.tabs[0]?.id || null);
+                state.cellData = parsed.cellData || {};
+            }
+        }
+
+        function saveToLocalStorage() {
+            localStorage.setItem('caseSchedulerV2', JSON.stringify({
+                tabs: state.tabs,
+                activeTabId: state.activeTabId,
+                cellData: state.cellData
+            }));
+        }
+
+        function saveToStorage() {
+            showStatus('儲存中...', true);
+            saveToLocalStorage();
+            
+            // 同步到 Firebase
+            if (firebaseReady && db) {
+                db.ref('scheduler').set({
+                    tabs: state.tabs,
+                    activeTabId: state.activeTabId,
+                    cellData: state.cellData,
+                    lastUpdated: new Date().toISOString()
+                }).then(() => {
+                    showStatus('已同步', false);
+                }).catch((error) => {
+                    console.error('同步失敗:', error);
+                    showStatus('同步失敗', false);
+                });
+            } else {
+                showStatus('離線模式', false);
+            }
+        }
+
+        function showStatus(text, isSaving) {
+            const dot = document.getElementById('storage-dot');
+            const textEl = document.getElementById('storage-text');
+            
+            if (isSaving) {
+                dot.classList.add('saving');
+            } else {
+                dot.classList.remove('saving');
+            }
+            textEl.textContent = text;
+        }
+
+        function showSaving() {
+            showStatus('儲存中...', true);
+        }
+
+        function showSaved() {
+            showStatus('已儲存', false);
+        }
+
+        function generateId() {
+            return Date.now().toString(36) + Math.random().toString(36).substr(2);
+        }
+
+        function formatDate(date) {
+            const d = new Date(date);
+            return `${(d.getMonth() + 1).toString().padStart(2, '0')}/${d.getDate().toString().padStart(2, '0')}`;
+        }
+
+        function formatDateForInput(date) {
+            return new Date(date).toISOString().split('T')[0];
+        }
+
+        function getDefaultStartDate() {
+            const today = new Date();
+            const day = today.getDay();
+            const diff = today.getDate() - day + (day === 0 ? -6 : 1);
+            return new Date(today.setDate(diff));
+        }
+
+        function getTabName(tab) {
+            return `${formatDate(tab.startDate)}-${formatDate(tab.endDate)}`;
+        }
+
+        function getActiveTab() {
+            return state.tabs.find(t => t.id === state.activeTabId);
+        }
+
+        // Tab Management
+        function createNewTab(startDate = null, endDate = null) {
+            const start = startDate || getDefaultStartDate();
+            const end = endDate || new Date(new Date(start).setDate(start.getDate() + 27)); // 4 weeks later
+            
+            const newTab = {
+                id: generateId(),
+                startDate: formatDateForInput(start),
+                endDate: formatDateForInput(end)
+            };
+            
+            state.tabs.push(newTab);
+            state.activeTabId = newTab.id;
+            saveToStorage();
+            return newTab;
+        }
+
+        function deleteTab(tabId) {
+            state.tabs = state.tabs.filter(t => t.id !== tabId);
+            if (state.activeTabId === tabId) {
+                state.activeTabId = state.tabs[0]?.id || null;
+            }
+            saveToStorage();
+            renderTabs();
+            renderTabContent();
+        }
+
+        function switchTab(tabId) {
+            state.activeTabId = tabId;
+            state.selectedCell = null;
+            state.selectedSlotIndex = null;
+            saveToStorage();
+            renderTabs();
+            renderTabContent();
+        }
+
+        // Rendering
+        function renderTabs() {
+            const container = document.getElementById('tabs-container');
+            const addBtn = document.getElementById('add-tab-btn');
+            
+            // Clear existing tabs
+            container.querySelectorAll('.tab').forEach(t => t.remove());
+            
+            // Add tabs before the add button
+            state.tabs.forEach(tab => {
+                const tabEl = document.createElement('button');
+                tabEl.className = `tab ${tab.id === state.activeTabId ? 'active' : ''}`;
+                tabEl.dataset.tabId = tab.id;
+                tabEl.innerHTML = `
+                    ${getTabName(tab)}
+                    <span class="close-tab" data-tab-id="${tab.id}">✕</span>
+                `;
+                container.insertBefore(tabEl, addBtn);
+            });
+        }
+
+        function renderTabContent() {
+            const container = document.getElementById('tab-content');
+            const tab = getActiveTab();
+            
+            if (!tab) {
+                container.innerHTML = '<p style="color: var(--text-muted); text-align: center; padding: 40px;">點擊「＋ 新增」建立排程</p>';
+                return;
+            }
+
+            const startDate = new Date(tab.startDate);
+            const endDate = new Date(tab.endDate);
+            const weeksNeeded = Math.ceil((endDate - startDate) / (7 * 24 * 60 * 60 * 1000)) + 1;
+            const numWeeks = Math.min(Math.max(weeksNeeded, 4), 6); // 4-6 weeks
+
+            let html = `
+                <div class="tab-header">
+                    <span class="tab-name-display">${getTabName(tab)}</span>
+                    <div>
+                        <label>起始：</label>
+                        <input type="date" id="tab-start-date" value="${tab.startDate}">
+                        <label style="margin-left: 10px;">結束：</label>
+                        <input type="date" id="tab-end-date" value="${tab.endDate}">
+                    </div>
+                </div>
+            `;
+
+            for (let week = 0; week < numWeeks; week++) {
+                html += createWeekHTML(startDate, week, tab);
+            }
+
+            container.innerHTML = html;
+        }
+
+        function createWeekHTML(startDate, weekIndex, tab) {
+            const weekStart = new Date(startDate);
+            weekStart.setDate(weekStart.getDate() + weekIndex * 7);
+            const weekEnd = new Date(weekStart);
+            weekEnd.setDate(weekEnd.getDate() + 4);
+
+            return `
+                <div class="week-container">
+                    <div class="week-header">
+                        <span class="week-title">第 ${weekIndex + 1} 週</span>
+                        <span class="week-dates">${formatDate(weekStart)} - ${formatDate(weekEnd)}</span>
+                    </div>
+                    <div class="schedule-grid">
+                        <div class="grid-header"></div>
+                        ${[0,1,2,3,4].map(d => {
+                            const date = new Date(weekStart);
+                            date.setDate(date.getDate() + d);
+                            return `<div class="grid-header day-header"><span class="day-name">週${dayNames[d]}</span><span class="day-date">${formatDate(date)}</span></div>`;
+                        }).join('')}
+                        <div class="row-label am">AM</div>
+                        ${[0,1,2,3,4].map(d => createCellHTML(weekStart, d, 'AM', tab)).join('')}
+                        <div class="row-label pm">PM</div>
+                        ${[0,1,2,3,4].map(d => createCellHTML(weekStart, d, 'PM', tab)).join('')}
+                    </div>
+                </div>
+            `;
+        }
+
+        function createCellHTML(weekStart, dayOffset, period, tab) {
+            const date = new Date(weekStart);
+            date.setDate(date.getDate() + dayOffset);
+            const cellKey = `${formatDateForInput(date)}-${period}`;
+            const cellData = state.cellData[cellKey] || { blocked: false, blockedReason: '', cases: [] };
+
+            const realCases = cellData.cases.filter(c => c.type !== 'slot' && !c.isEmpty);
+            const displayCases = [...cellData.cases];
+            const minSlots = Math.max(DEFAULT_SLOTS_PER_CELL, realCases.length + 1);
+            while (displayCases.length < minSlots) {
+                displayCases.push({ type: 'slot', time: '', chartNo: '', status: 'tentative', isEmpty: true });
+            }
+
+            const casesHTML = displayCases.map((c, i) => createCaseTagHTML(c, cellKey, i)).join('');
+            const blockedClass = cellData.blocked ? 'blocked' : '';
+            const blockedNote = cellData.blocked && cellData.blockedReason ? `<div class="blocked-note">${cellData.blockedReason}</div>` : '';
+
+            return `
+                <div class="cell ${blockedClass}" data-cell-key="${cellKey}">
+                    ${blockedNote}
+                    <div class="cases">${casesHTML}</div>
+                </div>
+            `;
+        }
+
+        function createCaseTagHTML(caseData, cellKey, index) {
+            const isEmpty = caseData.isEmpty || caseData.type === 'slot';
+            const label = isEmpty ? '＋' : (caseTypeLabels[caseData.type] || caseData.type);
+            const tentativeClass = caseData.status === 'tentative' ? 'tentative' : '';
+            const typeClass = isEmpty ? 'slot' : caseData.type;
+
+            let detailHTML = '';
+            if (!isEmpty) {
+                if (caseData.type === 'note') {
+                    detailHTML = `<span class="case-detail">${caseData.note || ''}</span>`;
+                } else {
+                    const parts = [caseData.time, caseData.chartNo].filter(Boolean);
+                    if (parts.length) detailHTML = `<span class="case-detail">${parts.join(' ')}</span>`;
+                }
+            }
+
+            const actionsHTML = isEmpty ? '' : `
+                <div class="case-actions">
+                    <button class="case-action-btn edit-btn" title="編輯">✎</button>
+                    <button class="case-action-btn delete-btn" title="刪除">✕</button>
+                </div>
+            `;
+
+            return `
+                <div class="case-tag ${typeClass} ${tentativeClass}" 
+                     draggable="${!isEmpty}" 
+                     data-cell-key="${cellKey}" 
+                     data-index="${index}"
+                     data-is-empty="${isEmpty}">
+                    <div class="case-info">
+                        <span class="case-type">${label}</span>
+                        ${detailHTML}
+                    </div>
+                    ${actionsHTML}
+                </div>
+            `;
+        }
+
+        function getDefaultTime(type, cellKey) {
+            const isAM = cellKey.endsWith('-AM');
+            if (type === 'ct-nb') return isAM ? '10:00' : '15:00';
+            if (type === 'stame' || type === 'ctame') return '08:00';
+            if (type === 'arthro') return '08:30';
+            return '';
+        }
+
+        // Event Listeners
+        function setupEventListeners() {
+            // 同步按鈕（手動重新載入）
+            document.getElementById('sync-btn').addEventListener('click', async () => {
+                if (firebaseReady && db) {
+                    showStatus('同步中...', true);
+                    const snapshot = await db.ref('scheduler').get();
+                    const data = snapshot.val();
+                    if (data) {
+                        state.tabs = data.tabs || [];
+                        state.activeTabId = data.activeTabId || (state.tabs[0]?.id || null);
+                        state.cellData = data.cellData || {};
+                        saveToLocalStorage();
+                        renderTabs();
+                        renderTabContent();
+                    }
+                    showStatus('已同步', false);
+                } else {
+                    alert('Firebase 尚未連線');
+                }
+            });
+
+            // Tab clicks
+            document.getElementById('tabs-container').addEventListener('click', (e) => {
+                const closeBtn = e.target.closest('.close-tab');
+                const tab = e.target.closest('.tab');
+                
+                if (closeBtn) {
+                    e.stopPropagation();
+                    state.tabToDelete = closeBtn.dataset.tabId;
+                    document.getElementById('delete-tab-modal').classList.add('show');
+                } else if (tab) {
+                    switchTab(tab.dataset.tabId);
+                }
+            });
+
+            // Add tab button
+            document.getElementById('add-tab-btn').addEventListener('click', () => {
+                const start = getDefaultStartDate();
+                document.getElementById('new-tab-start').value = formatDateForInput(start);
+                const end = new Date(start);
+                end.setDate(end.getDate() + 27);
+                document.getElementById('new-tab-end').value = formatDateForInput(end);
+                document.getElementById('new-tab-modal').classList.add('show');
+            });
+
+            // New tab modal
+            document.getElementById('new-tab-cancel').addEventListener('click', () => {
+                document.getElementById('new-tab-modal').classList.remove('show');
+            });
+
+            document.getElementById('new-tab-confirm').addEventListener('click', () => {
+                const start = document.getElementById('new-tab-start').value;
+                const end = document.getElementById('new-tab-end').value;
+                if (start && end) {
+                    createNewTab(new Date(start), new Date(end));
+                    renderTabs();
+                    renderTabContent();
+                }
+                document.getElementById('new-tab-modal').classList.remove('show');
+            });
+
+            // Delete tab modal
+            document.getElementById('delete-tab-cancel').addEventListener('click', () => {
+                document.getElementById('delete-tab-modal').classList.remove('show');
+            });
+
+            document.getElementById('delete-tab-confirm').addEventListener('click', () => {
+                if (state.tabToDelete) {
+                    deleteTab(state.tabToDelete);
+                    state.tabToDelete = null;
+                }
+                document.getElementById('delete-tab-modal').classList.remove('show');
+            });
+
+            // Tab content date changes
+            document.getElementById('tab-content').addEventListener('change', (e) => {
+                if (e.target.id === 'tab-start-date' || e.target.id === 'tab-end-date') {
+                    const tab = getActiveTab();
+                    if (tab) {
+                        if (e.target.id === 'tab-start-date') tab.startDate = e.target.value;
+                        if (e.target.id === 'tab-end-date') tab.endDate = e.target.value;
+                        saveToStorage();
+                        renderTabs();
+                        renderTabContent();
+                    }
+                }
+            });
+
+            // Cell and case tag clicks
+            document.addEventListener('click', (e) => {
+                const popup = document.getElementById('type-popup');
+                const popupBtn = e.target.closest('.type-popup-btn');
+                const caseTag = e.target.closest('.case-tag');
+                const cell = e.target.closest('.cell');
+
+                if (popupBtn) {
+                    const type = popupBtn.dataset.type;
+                    hideTypePopup();
+                    if (type === 'blocked') showBlockedModal();
+                    else showCaseModal(type);
+                    return;
+                }
+
+                if (!popup.contains(e.target)) hideTypePopup();
+
+                if (caseTag) {
+                    const isEmpty = caseTag.dataset.isEmpty === 'true';
+                    if (isEmpty) {
+                        state.selectedCell = caseTag.dataset.cellKey;
+                        state.selectedSlotIndex = parseInt(caseTag.dataset.index);
+                        showTypePopup(caseTag);
+                    }
+                } else if (cell && !e.target.closest('.case-actions')) {
+                    state.selectedCell = cell.dataset.cellKey;
+                    state.selectedSlotIndex = null;
+                }
+            });
+
+            // Edit/Delete buttons
+            document.addEventListener('click', (e) => {
+                const editBtn = e.target.closest('.edit-btn');
+                const deleteBtn = e.target.closest('.delete-btn');
+                const caseTag = e.target.closest('.case-tag');
+
+                if (deleteBtn && caseTag) {
+                    e.stopPropagation();
+                    deleteCase(caseTag.dataset.cellKey, parseInt(caseTag.dataset.index));
+                } else if (editBtn && caseTag) {
+                    e.stopPropagation();
+                    editCase(caseTag.dataset.cellKey, parseInt(caseTag.dataset.index));
+                }
+            });
+
+            // Keyboard
+            document.addEventListener('keydown', (e) => {
+                if (e.target.tagName === 'INPUT') return;
+                if (e.key === 'Escape') {
+                    hideTypePopup();
+                    document.querySelectorAll('.modal-overlay').forEach(m => m.classList.remove('show'));
+                    return;
+                }
+                if (!state.selectedCell) return;
+
+                const keyMap = {
+                    '1': 'ct-nb', '2': 'stame', '3': 'ctame', '4': 'sono', '5': 'mri', '6': 'arthro',
+                    'x': 'blocked', 'X': 'blocked', 'n': 'note', 'N': 'note'
+                };
+
+                const type = keyMap[e.key];
+                if (type) {
+                    e.preventDefault();
+                    hideTypePopup();
+                    if (type === 'blocked') showBlockedModal();
+                    else showCaseModal(type);
+                }
+            });
+
+            // Drag and drop
+            setupDragAndDrop();
+
+            // Modal events
+            setupModalEvents();
+        }
+
+        function showTypePopup(targetElement) {
+            const popup = document.getElementById('type-popup');
+            const rect = targetElement.getBoundingClientRect();
+            
+            let left = rect.right + 8;
+            let top = rect.top;
+            
+            if (left + 180 > window.innerWidth) left = rect.left - 180;
+            if (top + 180 > window.innerHeight) top = window.innerHeight - 190;
+            
+            popup.style.left = left + 'px';
+            popup.style.top = top + 'px';
+            popup.classList.add('show');
+        }
+
+        function hideTypePopup() {
+            document.getElementById('type-popup').classList.remove('show');
+        }
+
+        let currentModalType = null;
+        let editingCase = null;
+
+        function showCaseModal(type, existingData = null) {
+            currentModalType = type;
+            editingCase = existingData;
+
+            const modal = document.getElementById('case-modal');
+            const title = document.getElementById('modal-title');
+            const chartField = document.getElementById('chart-no-field');
+            const noteField = document.getElementById('note-field');
+            const statusField = document.getElementById('status-field');
+            const timeInput = document.getElementById('case-time');
+            const chartInput = document.getElementById('chart-no');
+            const noteInput = document.getElementById('note-text');
+
+            const defaultTime = getDefaultTime(type, state.selectedCell);
+            timeInput.value = existingData?.time || defaultTime;
+            chartInput.value = existingData?.chartNo || '';
+            noteInput.value = existingData?.note || '';
+
+            document.querySelectorAll('.status-btn').forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.status === (existingData?.status || 'tentative'));
+            });
+
+            if (type === 'note') {
+                title.textContent = existingData ? '編輯備註' : '新增備註';
+                chartField.style.display = 'none';
+                noteField.style.display = 'block';
+                statusField.style.display = 'none';
+            } else if (type === 'mri') {
+                title.textContent = existingData ? '編輯 MRI' : '新增 MRI 時段';
+                chartField.style.display = 'none';
+                noteField.style.display = 'none';
+                statusField.style.display = 'none';
+            } else {
+                title.textContent = existingData ? `編輯 ${caseTypeLabels[type]}` : `新增 ${caseTypeLabels[type]}`;
+                chartField.style.display = 'block';
+                noteField.style.display = 'none';
+                statusField.style.display = 'block';
+            }
+
+            modal.classList.add('show');
+            if (type === 'note') {
+                noteInput.focus();
+            } else if (defaultTime) {
+                chartInput.focus();
+            } else {
+                timeInput.focus();
+            }
+        }
+
+        function showBlockedModal() {
+            const cellData = state.cellData[state.selectedCell];
+            document.getElementById('blocked-reason').value = cellData?.blockedReason || '';
+            document.getElementById('blocked-modal').classList.add('show');
+            document.getElementById('blocked-reason').focus();
+        }
+
+        function setupModalEvents() {
+            document.getElementById('modal-cancel').addEventListener('click', () => {
+                document.getElementById('case-modal').classList.remove('show');
+                editingCase = null;
+            });
+
+            document.getElementById('modal-confirm').addEventListener('click', saveCaseFromModal);
+
+            document.querySelectorAll('.status-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    document.querySelectorAll('.status-btn').forEach(b => b.classList.remove('active'));
+                    btn.classList.add('active');
+                });
+            });
+
+            document.getElementById('blocked-cancel').addEventListener('click', () => {
+                document.getElementById('blocked-modal').classList.remove('show');
+            });
+
+            document.getElementById('blocked-confirm').addEventListener('click', toggleBlocked);
+
+            ['case-time', 'chart-no', 'note-text'].forEach(id => {
+                document.getElementById(id).addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter') { e.preventDefault(); saveCaseFromModal(); }
+                });
+            });
+
+            document.getElementById('blocked-reason').addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') { e.preventDefault(); toggleBlocked(); }
+            });
+
+            document.querySelectorAll('.modal-overlay').forEach(overlay => {
+                overlay.addEventListener('click', (e) => {
+                    if (e.target === overlay) { overlay.classList.remove('show'); editingCase = null; }
+                });
+            });
+        }
+
+        function saveCaseFromModal() {
+            const time = document.getElementById('case-time').value;
+            const chartNo = document.getElementById('chart-no').value.trim();
+            const note = document.getElementById('note-text').value.trim();
+            const status = document.querySelector('.status-btn.active')?.dataset.status || 'tentative';
+
+            const caseData = { type: currentModalType, time, chartNo, note, status };
+
+            if (!state.cellData[state.selectedCell]) {
+                state.cellData[state.selectedCell] = { blocked: false, blockedReason: '', cases: [] };
+            }
+
+            const cellCases = state.cellData[state.selectedCell].cases;
+
+            if (editingCase !== null) {
+                cellCases[editingCase.index] = caseData;
+            } else if (state.selectedSlotIndex !== null && state.selectedSlotIndex < cellCases.length) {
+                cellCases[state.selectedSlotIndex] = caseData;
+            } else if (state.selectedSlotIndex !== null) {
+                while (cellCases.length < state.selectedSlotIndex) {
+                    cellCases.push({ type: 'slot', isEmpty: true });
+                }
+                cellCases[state.selectedSlotIndex] = caseData;
+            } else {
+                cellCases.push(caseData);
+            }
+
+            saveToStorage();
+            renderTabContent();
+            state.selectedSlotIndex = null;
+
+            document.getElementById('case-modal').classList.remove('show');
+            editingCase = null;
+        }
+
+        function toggleBlocked() {
+            const reason = document.getElementById('blocked-reason').value.trim();
+
+            if (!state.cellData[state.selectedCell]) {
+                state.cellData[state.selectedCell] = { blocked: false, blockedReason: '', cases: [] };
+            }
+
+            const cellData = state.cellData[state.selectedCell];
+            cellData.blocked = !cellData.blocked;
+            cellData.blockedReason = cellData.blocked ? reason : '';
+
+            saveToStorage();
+            renderTabContent();
+            document.getElementById('blocked-modal').classList.remove('show');
+        }
+
+        function deleteCase(cellKey, index) {
+            if (state.cellData[cellKey]?.cases && index < state.cellData[cellKey].cases.length) {
+                state.cellData[cellKey].cases.splice(index, 1);
+                saveToStorage();
+                renderTabContent();
+            }
+        }
+
+        function editCase(cellKey, index) {
+            const caseData = state.cellData[cellKey]?.cases[index];
+            if (caseData && caseData.type !== 'slot') {
+                state.selectedCell = cellKey;
+                editingCase = { index };
+                showCaseModal(caseData.type, caseData);
+            }
+        }
+
+        let draggedItem = null, draggedFromCell = null, draggedIndex = null;
+
+        function setupDragAndDrop() {
+            document.addEventListener('dragstart', (e) => {
+                const caseTag = e.target.closest('.case-tag');
+                if (caseTag && caseTag.dataset.isEmpty !== 'true') {
+                    draggedItem = caseTag;
+                    draggedFromCell = caseTag.dataset.cellKey;
+                    draggedIndex = parseInt(caseTag.dataset.index);
+                    caseTag.classList.add('dragging');
+                    e.dataTransfer.effectAllowed = 'move';
+                }
+            });
+
+            document.addEventListener('dragend', () => {
+                if (draggedItem) draggedItem.classList.remove('dragging');
+                draggedItem = null; draggedFromCell = null; draggedIndex = null;
+            });
+
+            document.addEventListener('dragover', (e) => {
+                const cell = e.target.closest('.cell');
+                if (cell && draggedItem) { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; }
+            });
+
+            document.addEventListener('drop', (e) => {
+                const cell = e.target.closest('.cell');
+                if (cell && draggedItem) {
+                    e.preventDefault();
+                    moveCase(draggedFromCell, draggedIndex, cell.dataset.cellKey);
+                }
+            });
+        }
+
+        function moveCase(fromCellKey, fromIndex, toCellKey) {
+            if (!state.cellData[fromCellKey]?.cases || fromIndex >= state.cellData[fromCellKey].cases.length) return;
+
+            const caseData = state.cellData[fromCellKey].cases[fromIndex];
+            state.cellData[fromCellKey].cases.splice(fromIndex, 1);
+
+            if (!state.cellData[toCellKey]) {
+                state.cellData[toCellKey] = { blocked: false, blockedReason: '', cases: [] };
+            }
+            state.cellData[toCellKey].cases.push(caseData);
+
+            saveToStorage();
+            renderTabContent();
+        }
+
+        init();
+    </script>
+</body>
+</html>
