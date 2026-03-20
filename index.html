@@ -274,6 +274,16 @@
         .case-info { display: flex; align-items: center; gap: 3px; overflow: hidden; }
         .case-type { font-weight: 600; font-size: 0.65rem; white-space: nowrap; flex-shrink: 0; }
         .case-detail { font-size: 0.6rem; opacity: 0.85; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        
+        /* 滑鼠移上去時展開顯示完整內容 */
+        .case-tag:hover { 
+            position: relative; 
+            z-index: 10; 
+            max-width: none !important;
+            width: auto !important;
+        }
+        .case-tag:hover .case-info { overflow: visible; }
+        .case-tag:hover .case-detail { overflow: visible; }
 
         .case-actions { display: flex; gap: 2px; opacity: 0; transition: opacity 0.15s; }
         .case-tag:hover .case-actions { opacity: 1; }
@@ -295,20 +305,6 @@
         .case-action-btn:hover { background: rgba(0,0,0,0.4); }
 
         .blocked-note { font-size: 0.65rem; color: var(--color-blocked); padding: 2px 4px; position: relative; z-index: 1; }
-
-        /* 即時 Tooltip */
-        #case-tooltip {
-            position: fixed;
-            background: #1a1a2e;
-            color: #fff;
-            padding: 5px 10px;
-            border-radius: 4px;
-            font-size: 0.8rem;
-            z-index: 1000;
-            pointer-events: none;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.4);
-            display: none;
-        }
 
         /* Type Popup */
         .type-popup {
@@ -566,9 +562,6 @@
                 <button class="type-popup-btn blocked" data-type="blocked">✕ 不可用</button>
             </div>
         </div>
-
-        <!-- 即時 Tooltip -->
-        <div id="case-tooltip"></div>
 
         <footer>資料即時同步至 Firebase</footer>
     </div>
@@ -1137,16 +1130,13 @@
             const typeClass = isEmpty ? 'slot' : caseData.type;
 
             let displayText = '';
-            let fullText = '';
             if (!isEmpty) {
                 if (caseData.type === 'note') {
                     displayText = caseData.note || '';
-                    fullText = caseData.note || '';
                 } else {
                     // 格式：時間 類型 病歷號（例如：13:00 Sono 1067606）
                     const parts = [caseData.time, typeLabel, caseData.chartNo].filter(Boolean);
                     displayText = parts.join(' ');
-                    fullText = parts.join(' ');
                 }
             }
 
@@ -1156,17 +1146,13 @@
                     <button class="case-action-btn delete-btn" title="刪除">✕</button>
                 </div>
             `;
-            
-            // 用 data-full-text 存完整資訊供 tooltip 使用
-            const dataAttr = isEmpty ? '' : `data-full-text="${fullText}"`;
 
             return `
                 <div class="case-tag ${typeClass} ${tentativeClass}" 
                      draggable="${!isEmpty}" 
                      data-cell-key="${cellKey}" 
                      data-index="${index}"
-                     data-is-empty="${isEmpty}"
-                     ${dataAttr}>
+                     data-is-empty="${isEmpty}">
                     <div class="case-info">
                         <span class="case-detail">${isEmpty ? '＋' : displayText}</span>
                     </div>
@@ -1407,25 +1393,6 @@
                     else showCaseModal(type);
                 }
             });
-
-            // Tooltip 滑鼠事件（電腦版）
-            const tooltip = document.getElementById('case-tooltip');
-            document.addEventListener('mouseenter', (e) => {
-                const caseTag = e.target.closest('.case-tag');
-                if (caseTag && caseTag.dataset.isEmpty !== 'true' && caseTag.dataset.fullText) {
-                    tooltip.textContent = caseTag.dataset.fullText;
-                    const rect = caseTag.getBoundingClientRect();
-                    tooltip.style.left = rect.left + 'px';
-                    tooltip.style.top = (rect.top - 30) + 'px';
-                    tooltip.style.display = 'block';
-                }
-            }, true);
-            document.addEventListener('mouseleave', (e) => {
-                const caseTag = e.target.closest('.case-tag');
-                if (caseTag) {
-                    tooltip.style.display = 'none';
-                }
-            }, true);
 
             // Drag and drop
             setupDragAndDrop();
