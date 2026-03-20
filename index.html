@@ -400,7 +400,19 @@
     <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
 </head>
 <body>
-    <div class="container">
+    <!-- 密碼驗證畫面 -->
+    <div id="login-screen" style="display: flex; justify-content: center; align-items: center; height: 100vh; background: var(--bg-primary);">
+        <div style="background: var(--bg-secondary); padding: 30px; border-radius: 12px; border: 1px solid var(--border); text-align: center;">
+            <h2 style="margin-bottom: 20px; color: var(--text-primary);">🔒 請輸入密碼</h2>
+            <input type="password" id="password-input" placeholder="密碼" style="padding: 10px 15px; border: 1px solid var(--border); background: var(--bg-primary); color: var(--text-primary); border-radius: 6px; font-size: 1rem; width: 150px; text-align: center;">
+            <br><br>
+            <button id="login-btn" style="padding: 10px 25px; background: var(--color-ct-nb); border: none; color: #1a1a2e; border-radius: 6px; font-size: 1rem; font-weight: 600; cursor: pointer;">進入</button>
+            <p id="login-error" style="color: var(--color-blocked); margin-top: 15px; display: none;">密碼錯誤</p>
+        </div>
+    </div>
+
+    <!-- 主畫面（預設隱藏） -->
+    <div class="container" id="main-app" style="display: none;">
         <header>
             <h1>📋 案例排程表</h1>
             <div style="display: flex; align-items: center; gap: 12px;">
@@ -523,6 +535,46 @@
             appId: "1:703006186929:web:57ac5b059678005455f190",
             databaseURL: "https://case-scheduler-f752b-default-rtdb.firebaseio.com"
         };
+
+        // ========== 密碼設定 ==========
+        const APP_PASSWORD = '1225';
+
+        // 密碼驗證
+        function checkPassword() {
+            const input = document.getElementById('password-input');
+            const error = document.getElementById('login-error');
+            
+            if (input.value === APP_PASSWORD) {
+                document.getElementById('login-screen').style.display = 'none';
+                document.getElementById('main-app').style.display = 'block';
+                sessionStorage.setItem('authenticated', 'true');
+                init();
+            } else {
+                error.style.display = 'block';
+                input.value = '';
+                input.focus();
+            }
+        }
+
+        // 頁面載入時檢查
+        document.addEventListener('DOMContentLoaded', () => {
+            // 如果這個 session 已經驗證過，直接進入
+            if (sessionStorage.getItem('authenticated') === 'true') {
+                document.getElementById('login-screen').style.display = 'none';
+                document.getElementById('main-app').style.display = 'block';
+                init();
+            } else {
+                document.getElementById('password-input').focus();
+            }
+
+            // 登入按鈕
+            document.getElementById('login-btn').addEventListener('click', checkPassword);
+            
+            // Enter 鍵登入
+            document.getElementById('password-input').addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') checkPassword();
+            });
+        });
         
         // Firebase 變數
         let db = null;
@@ -530,11 +582,11 @@
 
         // State
         let state = {
-            tabs: [], // [{ id, startDate, endDate }] - 分頁只記錄日期範圍
+            tabs: [],
             activeTabId: null,
             selectedCell: null,
             selectedSlotIndex: null,
-            cellData: {} // 全域案例資料，key 是日期-時段，如 "2024-03-11-AM"
+            cellData: {}
         };
 
         const dayNames = ['一', '二', '三', '四', '五'];
@@ -752,7 +804,8 @@
                 return;
             }
 
-            const startDate = new Date(tab.startDate);
+            // 確保起始日是週一
+            const startDate = getMonday(new Date(tab.startDate));
             const endDate = new Date(tab.endDate);
             const weeksNeeded = Math.ceil((endDate - startDate) / (7 * 24 * 60 * 60 * 1000)) + 1;
             const numWeeks = Math.min(Math.max(weeksNeeded, 4), 6); // 4-6 weeks
