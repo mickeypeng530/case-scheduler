@@ -294,6 +294,43 @@
 
         .case-action-btn:hover { background: rgba(0,0,0,0.4); }
 
+        /* Tooltip for case tags */
+        .case-tag[data-tooltip] {
+            position: relative;
+        }
+        .case-tag[data-tooltip]::after {
+            content: attr(data-tooltip);
+            position: absolute;
+            bottom: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #1a1a2e;
+            color: #fff;
+            padding: 6px 10px;
+            border-radius: 5px;
+            font-size: 0.75rem;
+            font-weight: normal;
+            white-space: pre-line;
+            text-align: left;
+            min-width: 120px;
+            max-width: 200px;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.2s, visibility 0.2s;
+            z-index: 100;
+            pointer-events: none;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            margin-bottom: 5px;
+        }
+        .case-tag[data-tooltip]:hover::after {
+            opacity: 1;
+            visibility: visible;
+        }
+        /* 手機版不顯示 tooltip */
+        @media (max-width: 768px) {
+            .case-tag[data-tooltip]::after { display: none; }
+        }
+
         .blocked-note { font-size: 0.65rem; color: var(--color-blocked); padding: 2px 4px; position: relative; z-index: 1; }
 
         /* Type Popup */
@@ -628,6 +665,25 @@
             <div class="modal-buttons">
                 <button class="modal-btn cancel" id="delete-tab-cancel">取消</button>
                 <button class="modal-btn danger" id="delete-tab-confirm">刪除</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 案例詳細資訊（手機唯讀用） -->
+    <div class="modal-overlay" id="case-detail-modal">
+        <div class="modal">
+            <h3 id="detail-title">案例資訊</h3>
+            <div style="margin-bottom: 16px;">
+                <p style="margin-bottom: 8px;"><strong>類型：</strong><span id="detail-type"></span></p>
+                <p style="margin-bottom: 8px;"><strong>時間：</strong><span id="detail-time"></span></p>
+                <p style="margin-bottom: 8px;"><strong>病歷號：</strong><span id="detail-chart"></span></p>
+                <p style="margin-bottom: 8px;"><strong>狀態：</strong><span id="detail-status"></span></p>
+            </div>
+            <div class="modal-buttons">
+                <button type="button" class="modal-btn confirm" id="detail-close">關閉</button>
+            </div>
+        </div>
+    </div>
             </div>
         </div>
     </div>
@@ -1101,13 +1157,19 @@
             const typeClass = isEmpty ? 'slot' : caseData.type;
 
             let displayText = '';
+            let tooltipText = '';
             if (!isEmpty) {
                 if (caseData.type === 'note') {
                     displayText = caseData.note || '';
+                    tooltipText = `備註：${caseData.note || ''}`;
                 } else {
                     // 格式：時間 類型 病歷號（例如：13:00 Sono 1067606）
                     const parts = [caseData.time, typeLabel, caseData.chartNo].filter(Boolean);
                     displayText = parts.join(' ');
+                    
+                    // Tooltip 完整資訊
+                    const statusLabel = caseData.status === 'tentative' ? '暫定' : '確定';
+                    tooltipText = `類型：${typeLabel}\n時間：${caseData.time || '未設定'}\n病歷號：${caseData.chartNo || '未填寫'}\n狀態：${statusLabel}`;
                 }
             }
 
@@ -1117,13 +1179,16 @@
                     <button class="case-action-btn delete-btn" title="刪除">✕</button>
                 </div>
             `;
+            
+            const tooltipAttr = isEmpty ? '' : `data-tooltip="${tooltipText}"`;
 
             return `
                 <div class="case-tag ${typeClass} ${tentativeClass}" 
                      draggable="${!isEmpty}" 
                      data-cell-key="${cellKey}" 
                      data-index="${index}"
-                     data-is-empty="${isEmpty}">
+                     data-is-empty="${isEmpty}"
+                     ${tooltipAttr}>
                     <div class="case-info">
                         <span class="case-detail">${isEmpty ? '＋' : displayText}</span>
                     </div>
@@ -1273,6 +1338,7 @@
                 const popupBtn = e.target.closest('.type-popup-btn');
                 const caseTag = e.target.closest('.case-tag');
                 const cell = e.target.closest('.cell');
+                const isMobile = document.body.classList.contains('readonly');
 
                 if (popupBtn) {
                     const type = popupBtn.dataset.type;
@@ -1289,14 +1355,21 @@
                     const isSaturday = caseTag.dataset.saturday === 'true';
                     
                     if (isEmpty) {
+                        if (isMobile) return; // 手機唯讀不能新增
+                        
                         state.selectedCell = caseTag.dataset.cellKey;
                         state.selectedSlotIndex = parseInt(caseTag.dataset.index);
                         
                         if (isSaturday) {
-                            // 週六直接開 MRI modal
                             showCaseModal('mri');
                         } else {
                             showTypePopup(caseTag);
+                        }
+                    } else {
+                        // 點擊已存在的案例
+                        if (isMobile) {
+                            // 手機版：顯示詳細資訊
+                            showCaseDetail(caseTag.dataset.cellKey, parseInt(caseTag.dataset.index));
                         }
                     }
                 } else if (cell && !e.target.closest('.case-actions')) {
@@ -1429,6 +1502,35 @@
             document.getElementById('blocked-reason').focus();
         }
 
+        // 手機版：顯示案例詳細資訊
+        function showCaseDetail(cellKey, index) {
+            const cellData = state.cellData[cellKey];
+            if (!cellData) return;
+            
+            let cases = cellData.cases;
+            if (!Array.isArray(cases)) {
+                cases = Object.values(cases || {});
+            }
+            
+            const caseData = cases[index];
+            if (!caseData || caseData.type === 'slot') return;
+            
+            const typeLabel = caseTypeLabels[caseData.type] || caseData.type;
+            const statusLabel = caseData.status === 'tentative' ? '暫定' : '確定';
+            
+            // 解析日期
+            const datePart = cellKey.replace(/-AM$|-PM$/, '');
+            const period = cellKey.endsWith('-AM') ? '上午' : '下午';
+            
+            document.getElementById('detail-title').textContent = `${typeLabel} 詳細資訊`;
+            document.getElementById('detail-type').textContent = `${typeLabel}（${period}）`;
+            document.getElementById('detail-time').textContent = caseData.time || '未設定';
+            document.getElementById('detail-chart').textContent = caseData.chartNo || '未填寫';
+            document.getElementById('detail-status').textContent = statusLabel;
+            
+            document.getElementById('case-detail-modal').classList.add('show');
+        }
+
         function setupModalEvents() {
             document.getElementById('modal-cancel').addEventListener('click', () => {
                 document.getElementById('case-modal').classList.remove('show');
@@ -1451,6 +1553,11 @@
             });
 
             document.getElementById('blocked-confirm').addEventListener('click', toggleBlocked);
+
+            // 案例詳細資訊關閉按鈕
+            document.getElementById('detail-close').addEventListener('click', () => {
+                document.getElementById('case-detail-modal').classList.remove('show');
+            });
 
             ['case-time', 'chart-no', 'note-text'].forEach(id => {
                 document.getElementById(id).addEventListener('keydown', (e) => {
