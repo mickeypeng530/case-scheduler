@@ -267,6 +267,7 @@
         .case-tag.ctame { background: var(--color-ctame); color: #1a1a2e; }
         .case-tag.sono { background: var(--color-sono); color: #1a1a2e; }
         .case-tag.mri { background: var(--color-mri); color: #1a1a2e; width: 50%; font-size: 0.6rem; padding: 2px 4px; margin-left: auto; }
+        .case-tag.mri.full-width { width: 100%; margin-left: 0; font-size: inherit; padding: inherit; }
         .case-tag.arthro { background: var(--color-arthro); color: white; }
         .case-tag.slot { background: transparent; color: var(--text-muted); border: 1px dashed var(--border); padding: 2px 4px; font-size: 0.6rem; }
         .case-tag.note { background: var(--color-note); color: white; }
@@ -1086,6 +1087,10 @@
 
             // 只保留真正的案例（過濾掉空位）
             const realCases = cases.filter(c => c && c.type !== 'slot' && !c.isEmpty);
+            
+            // 判斷是否只有 MRI（讓 MRI 可以佔整格）
+            const onlyMRI = realCases.length > 0 && realCases.every(c => c.type === 'mri');
+            
             const displayCases = [...realCases];
             
             // 加入足夠的空位
@@ -1094,7 +1099,7 @@
                 displayCases.push({ type: 'slot', time: '', chartNo: '', status: 'tentative', isEmpty: true });
             }
 
-            const casesHTML = displayCases.map((c, i) => createCaseTagHTML(c, cellKey, i)).join('');
+            const casesHTML = displayCases.map((c, i) => createCaseTagHTML(c, cellKey, i, onlyMRI)).join('');
             const blockedClass = cellData.blocked ? 'blocked' : '';
             const blockedNote = cellData.blocked && cellData.blockedReason ? `<div class="blocked-note">${cellData.blockedReason}</div>` : '';
 
@@ -1149,11 +1154,14 @@
             `;
         }
 
-        function createCaseTagHTML(caseData, cellKey, index) {
+        function createCaseTagHTML(caseData, cellKey, index, onlyMRI = false) {
             const isEmpty = caseData.isEmpty || caseData.type === 'slot';
             const typeLabel = caseTypeLabels[caseData.type] || caseData.type;
             const tentativeClass = caseData.status === 'tentative' ? 'tentative' : '';
             const typeClass = isEmpty ? 'slot' : caseData.type;
+            
+            // 如果只有 MRI，加入 full-width class
+            const fullWidthClass = (caseData.type === 'mri' && onlyMRI) ? 'full-width' : '';
 
             let displayText = '';
             if (!isEmpty) {
@@ -1174,7 +1182,7 @@
             `;
 
             return `
-                <div class="case-tag ${typeClass} ${tentativeClass}" 
+                <div class="case-tag ${typeClass} ${tentativeClass} ${fullWidthClass}" 
                      draggable="${!isEmpty}" 
                      data-cell-key="${cellKey}" 
                      data-index="${index}"
@@ -1234,6 +1242,34 @@
                 const totalWeeks = document.querySelectorAll('.week-container').length;
                 updateMobileWeekView(totalWeeks);
             });
+            
+            // 手機滑動切換週
+            let touchStartX = 0;
+            let touchEndX = 0;
+            const tabContent = document.getElementById('tab-content');
+            
+            tabContent.addEventListener('touchstart', (e) => {
+                touchStartX = e.changedTouches[0].screenX;
+            }, { passive: true });
+            
+            tabContent.addEventListener('touchend', (e) => {
+                touchEndX = e.changedTouches[0].screenX;
+                const diff = touchStartX - touchEndX;
+                const totalWeeks = document.querySelectorAll('.week-container').length;
+                
+                // 滑動距離超過 50px 才觸發
+                if (Math.abs(diff) > 50) {
+                    if (diff > 0 && state.mobileWeekIndex < totalWeeks - 1) {
+                        // 往左滑 → 下一週
+                        state.mobileWeekIndex++;
+                        updateMobileWeekView(totalWeeks);
+                    } else if (diff < 0 && state.mobileWeekIndex > 0) {
+                        // 往右滑 → 上一週
+                        state.mobileWeekIndex--;
+                        updateMobileWeekView(totalWeeks);
+                    }
+                }
+            }, { passive: true });
             
             // 同步按鈕（手動重新載入）
             document.getElementById('sync-btn').addEventListener('click', async () => {
