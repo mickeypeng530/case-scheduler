@@ -296,6 +296,20 @@
 
         .blocked-note { font-size: 0.65rem; color: var(--color-blocked); padding: 2px 4px; position: relative; z-index: 1; }
 
+        /* 即時 Tooltip */
+        #case-tooltip {
+            position: fixed;
+            background: #1a1a2e;
+            color: #fff;
+            padding: 5px 10px;
+            border-radius: 4px;
+            font-size: 0.8rem;
+            z-index: 1000;
+            pointer-events: none;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+            display: none;
+        }
+
         /* Type Popup */
         .type-popup {
             display: none;
@@ -552,6 +566,9 @@
                 <button class="type-popup-btn blocked" data-type="blocked">✕ 不可用</button>
             </div>
         </div>
+
+        <!-- 即時 Tooltip -->
+        <div id="case-tooltip"></div>
 
         <footer>資料即時同步至 Firebase</footer>
     </div>
@@ -1048,8 +1065,11 @@
             // 確保 cases 是陣列（Firebase 可能存成物件）
             const cases = Array.isArray(cellData.cases) ? cellData.cases : Object.values(cellData.cases || {});
 
+            // 只保留真正的案例（過濾掉空位）
             const realCases = cases.filter(c => c && c.type !== 'slot' && !c.isEmpty);
-            const displayCases = [...cases];
+            const displayCases = [...realCases];
+            
+            // 加入足夠的空位
             const minSlots = Math.max(DEFAULT_SLOTS_PER_CELL, realCases.length + 1);
             while (displayCases.length < minSlots) {
                 displayCases.push({ type: 'slot', time: '', chartNo: '', status: 'tentative', isEmpty: true });
@@ -1077,14 +1097,11 @@
             // 確保 cases 是陣列
             const cases = Array.isArray(cellData.cases) ? cellData.cases : Object.values(cellData.cases || {});
 
-            // 週六只顯示 MRI 類型的案例
-            const mriCases = cases.filter(c => c && c.type === 'mri');
+            // 週六只顯示 MRI 類型的案例（過濾掉空位）
+            const mriCases = cases.filter(c => c && c.type === 'mri' && !c.isEmpty);
             
-            // 只顯示一個空位
-            const displayCases = [...mriCases];
-            if (displayCases.length === 0 || !displayCases.some(c => c.isEmpty)) {
-                displayCases.push({ type: 'slot', isEmpty: true });
-            }
+            // 加一個空位
+            const displayCases = [...mriCases, { type: 'slot', isEmpty: true }];
 
             const casesHTML = displayCases.map((c, i) => createSaturdayCaseTag(c, cellKey, i)).join('');
 
@@ -1386,6 +1403,28 @@
                 }
             });
 
+            // Tooltip 滑鼠事件（電腦版）
+            const tooltip = document.getElementById('case-tooltip');
+            document.addEventListener('mouseover', (e) => {
+                const caseTag = e.target.closest('.case-tag');
+                if (caseTag && caseTag.dataset.isEmpty !== 'true' && caseTag.title) {
+                    tooltip.textContent = caseTag.title;
+                    tooltip.style.display = 'block';
+                }
+            });
+            document.addEventListener('mousemove', (e) => {
+                if (tooltip.style.display === 'block') {
+                    tooltip.style.left = (e.clientX + 10) + 'px';
+                    tooltip.style.top = (e.clientY - 30) + 'px';
+                }
+            });
+            document.addEventListener('mouseout', (e) => {
+                const caseTag = e.target.closest('.case-tag');
+                if (caseTag) {
+                    tooltip.style.display = 'none';
+                }
+            });
+
             // Drag and drop
             setupDragAndDrop();
 
@@ -1481,14 +1520,17 @@
                 cases = Object.values(cases || {});
             }
             
-            const caseData = cases[index];
-            if (!caseData || caseData.type === 'slot') return;
+            // 過濾掉空位，用過濾後的 index
+            const realCases = cases.filter(c => c && c.type !== 'slot' && !c.isEmpty);
+            if (index >= realCases.length) return;
+            
+            const caseData = realCases[index];
+            if (!caseData) return;
             
             const typeLabel = caseTypeLabels[caseData.type] || caseData.type;
             const statusLabel = caseData.status === 'tentative' ? '暫定' : '確定';
             
             // 解析日期
-            const datePart = cellKey.replace(/-AM$|-PM$/, '');
             const period = cellKey.endsWith('-AM') ? '上午' : '下午';
             
             document.getElementById('detail-title').textContent = `${typeLabel} 詳細資訊`;
@@ -1566,18 +1608,17 @@
                 cellCases = Object.values(cellCases || {});
                 state.cellData[state.selectedCell].cases = cellCases;
             }
+            
+            // 過濾掉空位，只保留真正案例
+            const realCases = cellCases.filter(c => c && c.type !== 'slot' && !c.isEmpty);
 
             if (editingCase !== null) {
+                // 編輯：用原始 index 直接替換
                 cellCases[editingCase.index] = caseData;
-            } else if (state.selectedSlotIndex !== null && state.selectedSlotIndex < cellCases.length) {
-                cellCases[state.selectedSlotIndex] = caseData;
-            } else if (state.selectedSlotIndex !== null) {
-                while (cellCases.length < state.selectedSlotIndex) {
-                    cellCases.push({ type: 'slot', isEmpty: true });
-                }
-                cellCases[state.selectedSlotIndex] = caseData;
             } else {
-                cellCases.push(caseData);
+                // 新增：直接加到真正案例的最後
+                // 先清空舊陣列，重建為只有真正案例 + 新案例
+                state.cellData[state.selectedCell].cases = [...realCases, caseData];
             }
 
             saveToStorage();
@@ -1612,11 +1653,19 @@
             let cases = cellData.cases;
             if (!Array.isArray(cases)) {
                 cases = Object.values(cases || {});
+                state.cellData[cellKey].cases = cases;
             }
             
-            if (index < cases.length) {
-                cases.splice(index, 1);
-                state.cellData[cellKey].cases = cases;
+            // 過濾掉空位，找到真正的案例
+            const realCases = cases.filter(c => c && c.type !== 'slot' && !c.isEmpty);
+            if (index >= realCases.length) return;
+            
+            const caseToDelete = realCases[index];
+            
+            // 從原始陣列中找到並移除
+            const originalIndex = cases.findIndex(c => c === caseToDelete);
+            if (originalIndex !== -1) {
+                cases.splice(originalIndex, 1);
                 saveToStorage();
                 renderTabContent();
             }
@@ -1630,13 +1679,21 @@
             let cases = cellData.cases;
             if (!Array.isArray(cases)) {
                 cases = Object.values(cases || {});
+                state.cellData[cellKey].cases = cases;
             }
             
-            const caseData = cases[index];
+            // 過濾掉空位，找到真正的案例
+            const realCases = cases.filter(c => c && c.type !== 'slot' && !c.isEmpty);
+            if (index >= realCases.length) return;
+            
+            const caseData = realCases[index];
+            
+            // 找到在原始陣列中的位置
+            const originalIndex = cases.findIndex(c => c === caseData);
+            
             if (caseData && caseData.type !== 'slot') {
                 state.selectedCell = cellKey;
-                state.cellData[cellKey].cases = cases; // 更新為陣列格式
-                editingCase = { index };
+                editingCase = { index: originalIndex };  // 用原始 index
                 showCaseModal(caseData.type, caseData);
             }
         }
@@ -1675,15 +1732,40 @@
         }
 
         function moveCase(fromCellKey, fromIndex, toCellKey) {
-            if (!state.cellData[fromCellKey]?.cases || fromIndex >= state.cellData[fromCellKey].cases.length) return;
-
-            const caseData = state.cellData[fromCellKey].cases[fromIndex];
-            state.cellData[fromCellKey].cases.splice(fromIndex, 1);
+            const fromCellData = state.cellData[fromCellKey];
+            if (!fromCellData) return;
+            
+            // 確保 cases 是陣列
+            let fromCases = fromCellData.cases;
+            if (!Array.isArray(fromCases)) {
+                fromCases = Object.values(fromCases || {});
+                state.cellData[fromCellKey].cases = fromCases;
+            }
+            
+            // 過濾掉空位，找到真正的案例
+            const realCases = fromCases.filter(c => c && c.type !== 'slot' && !c.isEmpty);
+            if (fromIndex >= realCases.length) return;
+            
+            const caseData = realCases[fromIndex];
+            
+            // 從原始陣列中移除（找到真正的位置）
+            const originalIndex = fromCases.findIndex(c => c === caseData);
+            if (originalIndex !== -1) {
+                fromCases.splice(originalIndex, 1);
+            }
 
             if (!state.cellData[toCellKey]) {
                 state.cellData[toCellKey] = { blocked: false, blockedReason: '', cases: [] };
             }
-            state.cellData[toCellKey].cases.push(caseData);
+            
+            // 確保目標 cases 是陣列
+            let toCases = state.cellData[toCellKey].cases;
+            if (!Array.isArray(toCases)) {
+                toCases = Object.values(toCases || {});
+                state.cellData[toCellKey].cases = toCases;
+            }
+            
+            toCases.push(caseData);
 
             saveToStorage();
             renderTabContent();
