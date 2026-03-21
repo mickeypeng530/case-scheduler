@@ -263,6 +263,7 @@
         .case-tag.tentative { opacity: 0.6; border: 1px dashed rgba(255,255,255,0.3); }
 
         .case-tag.ct-nb { background: var(--color-ct-nb); color: #1a1a2e; }
+        .case-tag.ct-nb-prf { background: var(--color-ct-nb); color: #1a1a2e; }
         .case-tag.stame { background: var(--color-stame); color: white; }
         .case-tag.ctame { background: var(--color-ctame); color: #1a1a2e; }
         .case-tag.sono { background: var(--color-sono); color: #1a1a2e; }
@@ -342,6 +343,7 @@
         .type-popup-btn:hover { transform: scale(1.05); }
 
         .type-popup-btn.ct-nb { background: var(--color-ct-nb); color: #1a1a2e; }
+        .type-popup-btn.ct-nb-prf { background: var(--color-ct-nb); color: #1a1a2e; }
         .type-popup-btn.stame { background: var(--color-stame); color: white; }
         .type-popup-btn.ctame { background: var(--color-ctame); color: #1a1a2e; }
         .type-popup-btn.sono { background: var(--color-sono); color: #1a1a2e; }
@@ -659,6 +661,7 @@
         <div class="type-popup" id="type-popup">
             <div class="type-popup-grid">
                 <button class="type-popup-btn ct-nb" data-type="ct-nb">CT NB</button>
+                <button class="type-popup-btn ct-nb-prf" data-type="ct-nb-prf">CT NB pRF</button>
                 <button class="type-popup-btn stame" data-type="stame">sTAME</button>
                 <button class="type-popup-btn ctame" data-type="ctame">cTAME</button>
                 <button class="type-popup-btn sono" data-type="sono">Sono</button>
@@ -851,7 +854,7 @@
 
         const dayNames = ['一', '二', '三', '四', '五'];
         const caseTypeLabels = {
-            'ct-nb': 'CT NB', 'stame': 'sTAME', 'ctame': 'cTAME',
+            'ct-nb': 'CT NB', 'ct-nb-prf': 'CT NB pRF', 'stame': 'sTAME', 'ctame': 'cTAME',
             'sono': 'Sono', 'mri': 'MRI', 'arthro': 'Arthro', 'slot': '空位', 'note': '備註'
         };
         const DEFAULT_SLOTS_PER_CELL = 2;
@@ -1116,7 +1119,7 @@
             const startDate = getMonday(new Date(tab.startDate));
             const endDate = new Date(tab.endDate);
             
-            // 統計各類型數量
+            // 統計各類型數量（ct-nb 和 ct-nb-prf 合併）
             const typeCounts = {
                 'ct-nb': 0, 'stame': 0, 'ctame': 0, 
                 'sono': 0, 'mri': 0, 'arthro': 0
@@ -1124,6 +1127,7 @@
             
             // 收集所有案例
             const allCases = [];
+            const validTypes = ['ct-nb', 'ct-nb-prf', 'stame', 'ctame', 'sono', 'mri', 'arthro'];
             
             for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
                 ['AM', 'PM'].forEach(period => {
@@ -1132,13 +1136,16 @@
                     if (cellData?.cases) {
                         const cases = Array.isArray(cellData.cases) ? cellData.cases : Object.values(cellData.cases || {});
                         cases.forEach(c => {
-                            if (c && c.type && c.type !== 'slot' && !c.isEmpty && typeCounts.hasOwnProperty(c.type)) {
-                                typeCounts[c.type]++;
+                            if (c && c.type && c.type !== 'slot' && !c.isEmpty && validTypes.includes(c.type)) {
+                                // ct-nb-prf 合併到 ct-nb 統計
+                                const statsType = c.type === 'ct-nb-prf' ? 'ct-nb' : c.type;
+                                typeCounts[statsType]++;
                                 allCases.push({
                                     ...c,
                                     date: new Date(d),
                                     cellKey,
-                                    period
+                                    period,
+                                    statsType  // 用於篩選
                                 });
                             }
                         });
@@ -1160,7 +1167,7 @@
             const detailEl = document.getElementById('stats-detail');
             if (activeStatsType && typeCounts[activeStatsType] > 0) {
                 const filteredCases = allCases
-                    .filter(c => c.type === activeStatsType)
+                    .filter(c => c.statsType === activeStatsType)
                     .sort((a, b) => {
                         const dateCompare = a.date - b.date;
                         if (dateCompare !== 0) return dateCompare;
@@ -1174,10 +1181,12 @@
                     const dayName = dayNames[c.date.getDay()];
                     const statusClass = c.status === 'tentative' ? 'tentative' : '';
                     const statusText = c.status === 'tentative' ? '暫定' : '確定';
+                    const typeLabel = caseTypeLabels[c.type] || c.type;
                     return `
                         <div class="stats-detail-item">
                             <span class="date">${dateStr} (${dayName}) ${c.period}</span>
                             <span class="time">${c.time || '--:--'}</span>
+                            <span class="type-label" style="color: var(--color-ct-nb); min-width: 70px;">${typeLabel}</span>
                             <span class="chart">${c.chartNo || '-'}</span>
                             <span class="status ${statusClass}">${statusText}</span>
                         </div>
@@ -1197,6 +1206,7 @@
         // 匯出類型名稱對應
         const exportTypeLabels = {
             'ct-nb': 'CT NB',
+            'ct-nb-prf': 'pRF',
             'stame': 'sTAME',
             'ctame': 'cTAME',
             'sono': 'SONO INJ',
@@ -1217,7 +1227,7 @@
             
             // 收集所有案例（排除備註和不可用）
             const allCases = [];
-            const validTypes = ['ct-nb', 'stame', 'ctame', 'sono', 'mri', 'arthro'];
+            const validTypes = ['ct-nb', 'ct-nb-prf', 'stame', 'ctame', 'sono', 'mri', 'arthro'];
             
             for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
                 ['AM', 'PM'].forEach(period => {
@@ -1266,10 +1276,18 @@
                 const typeLabel = exportTypeLabels[c.type] || c.type;
                 const col5Text = `${dateStr} ${c.time || ''} ${typeLabel}`.trim();
                 
-                // 第3欄顏色：MRI=紫色、Arthro=黃色、其他=綠色
-                let col3Color = "90EE90"; // 淺綠色
-                if (c.type === 'mri') col3Color = "DDA0DD"; // 淺紫色
-                if (c.type === 'arthro') col3Color = "FFFF99"; // 淺黃色
+                // 第3欄顏色：只有 MRI=紫色、Arthro=黃色，其他不加顏色
+                let col3Shading = null;
+                if (c.type === 'mri') col3Shading = { fill: "E6E6FA", type: ShadingType.CLEAR }; // 淺紫色
+                if (c.type === 'arthro') col3Shading = { fill: "FFFACD", type: ShadingType.CLEAR }; // 淺黃色
+                
+                // 第3欄 cell 設定
+                const col3Cell = {
+                    borders,
+                    width: { size: colWidths[2], type: WidthType.DXA },
+                    children: [new Paragraph({ children: [] })]
+                };
+                if (col3Shading) col3Cell.shading = col3Shading;
                 
                 return new TableRow({
                     children: [
@@ -1285,13 +1303,8 @@
                             width: { size: colWidths[1], type: WidthType.DXA },
                             children: [new Paragraph({ children: [] })]
                         }),
-                        // 第3欄：顏色標記
-                        new TableCell({
-                            borders,
-                            width: { size: colWidths[2], type: WidthType.DXA },
-                            shading: { fill: col3Color, type: ShadingType.CLEAR },
-                            children: [new Paragraph({ children: [] })]
-                        }),
+                        // 第3欄：顏色標記（只有 MRI 和 Arthro）
+                        new TableCell(col3Cell),
                         // 第4欄：空白（備註）
                         new TableCell({
                             borders,
@@ -1539,7 +1552,7 @@
 
         function getDefaultTime(type, cellKey) {
             const isAM = cellKey.endsWith('-AM');
-            if (type === 'ct-nb') return isAM ? '10:00' : '15:00';
+            if (type === 'ct-nb' || type === 'ct-nb-prf') return isAM ? '10:00' : '15:00';
             if (type === 'stame' || type === 'ctame') return '08:00';
             if (type === 'arthro') return '08:30';
             return '';
@@ -1795,6 +1808,7 @@
 
                 const keyMap = {
                     '1': 'ct-nb', '2': 'stame', '3': 'ctame', '4': 'sono', '5': 'mri', '6': 'arthro',
+                    'p': 'ct-nb-prf', 'P': 'ct-nb-prf',
                     'x': 'blocked', 'X': 'blocked', 'n': 'note', 'N': 'note'
                 };
 
