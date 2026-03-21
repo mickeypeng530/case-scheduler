@@ -1190,7 +1190,6 @@
                     const colorClass = type === 'tame' ? 'stame' : type;
                     return `<div class="stats-item ${colorClass} ${activeClass}" data-type="${type}">${statsLabels[type]}: ${count}</div>`;
                 }).join('');
-                }).join('');
             
             document.getElementById('stats-summary').innerHTML = summaryHTML || '<span style="color: var(--text-muted); font-size: 0.75rem;">此區間無案例</span>';
             
