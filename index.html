@@ -1133,9 +1133,9 @@
             const startDate = getMonday(new Date(tab.startDate));
             const endDate = new Date(tab.endDate);
             
-            // 統計各類型數量（ct-nb 和 ct-nb-prf 合併）
+            // 統計各類型數量（ct-nb+ct-nb-prf 合併，stame+ctame 合併為 tame）
             const typeCounts = {
-                'ct-nb': 0, 'stame': 0, 'ctame': 0, 
+                'ct-nb': 0, 'tame': 0, 
                 'sono': 0, 'mri': 0, 'arthro': 0
             };
             
@@ -1151,8 +1151,11 @@
                         const cases = Array.isArray(cellData.cases) ? cellData.cases : Object.values(cellData.cases || {});
                         cases.forEach(c => {
                             if (c && c.type && c.type !== 'slot' && !c.isEmpty && validTypes.includes(c.type)) {
-                                // ct-nb-prf 合併到 ct-nb 統計
-                                const statsType = c.type === 'ct-nb-prf' ? 'ct-nb' : c.type;
+                                // ct-nb-prf 合併到 ct-nb，stame/ctame 合併到 tame
+                                let statsType = c.type;
+                                if (c.type === 'ct-nb-prf') statsType = 'ct-nb';
+                                if (c.type === 'stame' || c.type === 'ctame') statsType = 'tame';
+                                
                                 typeCounts[statsType]++;
                                 allCases.push({
                                     ...c,
@@ -1167,12 +1170,24 @@
                 });
             }
             
+            // 統計摘要標籤
+            const statsLabels = {
+                'ct-nb': 'CT NB',
+                'tame': 'TAME',
+                'sono': 'Sono',
+                'mri': 'MRI',
+                'arthro': 'Arthro'
+            };
+            
             // 生成統計摘要
             const summaryHTML = Object.entries(typeCounts)
                 .filter(([type, count]) => count > 0)
                 .map(([type, count]) => {
                     const activeClass = activeStatsType === type ? 'active' : '';
-                    return `<div class="stats-item ${type} ${activeClass}" data-type="${type}">${caseTypeLabels[type]}: ${count}</div>`;
+                    // tame 用 stame 的顏色（藍色）
+                    const colorClass = type === 'tame' ? 'stame' : type;
+                    return `<div class="stats-item ${colorClass} ${activeClass}" data-type="${type}">${statsLabels[type]}: ${count}</div>`;
+                }).join('');
                 }).join('');
             
             document.getElementById('stats-summary').innerHTML = summaryHTML || '<span style="color: var(--text-muted); font-size: 0.75rem;">此區間無案例</span>';
@@ -1207,8 +1222,11 @@
                     `;
                 }).join('');
                 
+                // 標題（tame 顯示為 TAME）
+                const titleLabel = activeStatsType === 'tame' ? 'TAME' : (caseTypeLabels[activeStatsType] || activeStatsType);
+                
                 detailEl.innerHTML = `
-                    <div class="stats-detail-title">${caseTypeLabels[activeStatsType]} 清單（共 ${filteredCases.length} 筆）</div>
+                    <div class="stats-detail-title">${titleLabel} 清單（共 ${filteredCases.length} 筆）</div>
                     <div class="stats-detail-list">${listHTML}</div>
                 `;
                 detailEl.style.display = 'block';
