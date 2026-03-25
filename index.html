@@ -107,6 +107,65 @@
 
         .add-tab:hover { border-color: var(--text-secondary); color: var(--text-secondary); }
 
+        /* 舊分頁下拉選單 */
+        .old-tabs-wrapper {
+            position: relative;
+        }
+        .old-tabs-btn {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border);
+        }
+        .old-tabs-dropdown {
+            display: none;
+            position: absolute;
+            top: 100%;
+            right: 0;
+            margin-top: 4px;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            min-width: 180px;
+            max-height: 320px;
+            overflow-y: auto;
+            z-index: 100;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+        }
+        .old-tabs-dropdown.show {
+            display: block;
+        }
+        .old-tab-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 12px;
+            cursor: pointer;
+            border-bottom: 1px solid var(--border);
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+        }
+        .old-tab-item:last-child {
+            border-bottom: none;
+        }
+        .old-tab-item:hover {
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+        }
+        .old-tab-item.active {
+            background: var(--color-ct-nb);
+            color: #1a1a2e;
+            font-weight: 600;
+        }
+        .old-tab-close {
+            font-size: 0.75rem;
+            opacity: 0.5;
+            padding: 2px 6px;
+            border-radius: 4px;
+        }
+        .old-tab-close:hover {
+            opacity: 1;
+            background: rgba(0,0,0,0.2);
+        }
+
         /* Date picker in tab content */
         .tab-header {
             display: flex;
@@ -664,6 +723,47 @@
             .stats-detail-item .type-label { min-width: 50px; font-size: 0.6rem; }
             .stats-detail-item .chart { font-size: 0.6rem; }
             .stats-detail-item .status { font-size: 0.55rem; }
+            
+            /* 手機版舊分頁 - 底部抽屜 */
+            .old-tabs-dropdown {
+                position: fixed;
+                top: auto;
+                bottom: 0;
+                left: 0;
+                right: 0;
+                margin-top: 0;
+                border-radius: 16px 16px 0 0;
+                max-height: 60vh;
+                min-width: auto;
+                width: 100%;
+            }
+            .old-tabs-dropdown::before {
+                content: '';
+                display: block;
+                width: 40px;
+                height: 4px;
+                background: var(--border);
+                border-radius: 2px;
+                margin: 12px auto;
+            }
+            .old-tab-item {
+                padding: 14px 16px;
+            }
+            
+            /* 手機版顯示時加入背景遮罩 */
+            .old-tabs-overlay {
+                display: none;
+                position: fixed;
+                top: 0;
+                left: 0;
+                right: 0;
+                bottom: 0;
+                background: rgba(0,0,0,0.5);
+                z-index: 99;
+            }
+            .old-tabs-overlay.show {
+                display: block;
+            }
         }
     </style>
     <!-- Firebase SDK -->
@@ -706,6 +806,9 @@
             <!-- Tabs will be rendered here -->
             <button class="add-tab" id="add-tab-btn">＋ 新增</button>
         </div>
+        
+        <!-- 舊分頁遮罩（手機版） -->
+        <div class="old-tabs-overlay" id="old-tabs-overlay"></div>
 
         <!-- 手機週切換器 -->
         <div class="mobile-week-nav" id="mobile-week-nav">
@@ -1154,11 +1257,22 @@
             const container = document.getElementById('tabs-container');
             const addBtn = document.getElementById('add-tab-btn');
             
-            // Clear existing tabs
-            container.querySelectorAll('.tab').forEach(t => t.remove());
+            // Clear existing tabs and old-tabs dropdown
+            container.querySelectorAll('.tab, .old-tabs-wrapper').forEach(t => t.remove());
             
-            // Add tabs before the add button
-            state.tabs.forEach(tab => {
+            // 按日期排序（最新的在後面）
+            const sortedTabs = [...state.tabs].sort((a, b) => {
+                const dateA = new Date(a.statsStartDate || a.startDate);
+                const dateB = new Date(b.statsStartDate || b.startDate);
+                return dateA - dateB;
+            });
+            
+            // 分成最新 4 個和舊分頁
+            const recentTabs = sortedTabs.slice(-4);
+            const oldTabs = sortedTabs.slice(0, -4);
+            
+            // 渲染最新 4 個分頁
+            recentTabs.forEach(tab => {
                 const tabEl = document.createElement('button');
                 tabEl.className = `tab ${tab.id === state.activeTabId ? 'active' : ''}`;
                 tabEl.dataset.tabId = tab.id;
@@ -1168,6 +1282,36 @@
                 `;
                 container.insertBefore(tabEl, addBtn);
             });
+            
+            // 如果有舊分頁，加入下拉選單
+            if (oldTabs.length > 0) {
+                const oldTabsWrapper = document.createElement('div');
+                oldTabsWrapper.className = 'old-tabs-wrapper';
+                
+                const oldTabsBtn = document.createElement('button');
+                oldTabsBtn.className = 'tab old-tabs-btn';
+                oldTabsBtn.innerHTML = `📁 舊分頁 (${oldTabs.length}) ▼`;
+                
+                const dropdown = document.createElement('div');
+                dropdown.className = 'old-tabs-dropdown';
+                dropdown.id = 'old-tabs-dropdown';
+                
+                // 舊分頁列表（最新的在上面）
+                oldTabs.reverse().forEach(tab => {
+                    const item = document.createElement('div');
+                    item.className = `old-tab-item ${tab.id === state.activeTabId ? 'active' : ''}`;
+                    item.dataset.tabId = tab.id;
+                    item.innerHTML = `
+                        <span class="old-tab-name">${getTabName(tab)}</span>
+                        <span class="old-tab-close" data-tab-id="${tab.id}">✕</span>
+                    `;
+                    dropdown.appendChild(item);
+                });
+                
+                oldTabsWrapper.appendChild(oldTabsBtn);
+                oldTabsWrapper.appendChild(dropdown);
+                container.appendChild(oldTabsWrapper);
+            }
         }
 
         function renderTabContent() {
@@ -1805,8 +1949,46 @@
             // Tab clicks
             document.getElementById('tabs-container').addEventListener('click', (e) => {
                 const closeBtn = e.target.closest('.close-tab');
-                const tab = e.target.closest('.tab');
+                const oldTabClose = e.target.closest('.old-tab-close');
+                const oldTabItem = e.target.closest('.old-tab-item');
+                const oldTabsBtn = e.target.closest('.old-tabs-btn');
+                const tab = e.target.closest('.tab:not(.old-tabs-btn)');
                 
+                // 舊分頁下拉選單按鈕
+                if (oldTabsBtn) {
+                    e.stopPropagation();
+                    const dropdown = document.getElementById('old-tabs-dropdown');
+                    const overlay = document.getElementById('old-tabs-overlay');
+                    if (dropdown) {
+                        const isShowing = dropdown.classList.contains('show');
+                        if (isShowing) {
+                            dropdown.classList.remove('show');
+                            overlay?.classList.remove('show');
+                        } else {
+                            dropdown.classList.add('show');
+                            overlay?.classList.add('show');
+                        }
+                    }
+                    return;
+                }
+                
+                // 舊分頁刪除按鈕
+                if (oldTabClose) {
+                    e.stopPropagation();
+                    state.tabToDelete = oldTabClose.dataset.tabId;
+                    document.getElementById('delete-tab-modal').classList.add('show');
+                    hideOldTabsDropdown();
+                    return;
+                }
+                
+                // 舊分頁項目點擊
+                if (oldTabItem) {
+                    switchTab(oldTabItem.dataset.tabId);
+                    hideOldTabsDropdown();
+                    return;
+                }
+                
+                // 一般分頁的刪除按鈕
                 if (closeBtn) {
                     e.stopPropagation();
                     state.tabToDelete = closeBtn.dataset.tabId;
@@ -1815,6 +1997,27 @@
                     switchTab(tab.dataset.tabId);
                 }
             });
+            
+            // 點擊遮罩或其他地方關閉舊分頁下拉選單
+            document.addEventListener('click', (e) => {
+                if (!e.target.closest('.old-tabs-wrapper')) {
+                    hideOldTabsDropdown();
+                }
+            });
+            
+            document.getElementById('old-tabs-overlay').addEventListener('click', () => {
+                hideOldTabsDropdown();
+            });
+            
+            function showOldTabsDropdown() {
+                document.getElementById('old-tabs-dropdown')?.classList.add('show');
+                document.getElementById('old-tabs-overlay')?.classList.add('show');
+            }
+            
+            function hideOldTabsDropdown() {
+                document.getElementById('old-tabs-dropdown')?.classList.remove('show');
+                document.getElementById('old-tabs-overlay')?.classList.remove('show');
+            }
 
             // Add tab button
             document.getElementById('add-tab-btn').addEventListener('click', () => {
