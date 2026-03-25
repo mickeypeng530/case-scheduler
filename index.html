@@ -285,9 +285,20 @@
             width: auto !important;
         }
         .case-tag:hover .case-info { overflow: visible; }
-        .case-tag:hover .case-detail { overflow: visible; }
+        .case-tag:hover .case-detail { overflow: visible; white-space: nowrap; }
 
-        .case-actions { display: flex; gap: 2px; opacity: 0; transition: opacity 0.15s; }
+        .case-actions { 
+            display: flex; 
+            gap: 2px; 
+            opacity: 0; 
+            transition: opacity 0.15s; 
+            position: relative;
+            z-index: 20;
+            flex-shrink: 0;
+            margin-left: auto;
+            padding-left: 4px;
+            background: inherit;
+        }
         .case-tag:hover .case-actions { opacity: 1; }
 
         .case-action-btn {
