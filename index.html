@@ -272,12 +272,46 @@
 
         .cell:hover { background: rgba(255,255,255,0.03); border-color: var(--border); }
         .cell.selected { border-color: var(--color-ct-nb); background: rgba(251,191,36,0.1); }
+        
+        /* 過去日期的格子 */
+        .cell.past-date {
+            background: repeating-linear-gradient(
+                135deg,
+                rgba(128, 128, 128, 0.15),
+                rgba(128, 128, 128, 0.15) 2px,
+                var(--bg-primary) 2px,
+                var(--bg-primary) 8px
+            );
+        }
+        .cell.past-date .case-tag {
+            opacity: 0.6;
+        }
+        .cell.past-date:hover {
+            background: repeating-linear-gradient(
+                135deg,
+                rgba(128, 128, 128, 0.2),
+                rgba(128, 128, 128, 0.2) 2px,
+                rgba(255,255,255,0.03) 2px,
+                rgba(255,255,255,0.03) 8px
+            );
+        }
 
         .cell.saturday-cell { 
             background: rgba(196, 181, 253, 0.1); 
             min-height: 55px;
         }
         .cell.saturday-cell:hover { background: rgba(196, 181, 253, 0.2); }
+        
+        /* 週六過去日期 */
+        .cell.saturday-cell.past-date {
+            background: repeating-linear-gradient(
+                135deg,
+                rgba(128, 128, 128, 0.15),
+                rgba(128, 128, 128, 0.15) 2px,
+                rgba(196, 181, 253, 0.1) 2px,
+                rgba(196, 181, 253, 0.1) 8px
+            );
+        }
         
         .saturday-slot { 
             font-size: 0.6rem !important; 
@@ -1897,9 +1931,16 @@
             const casesHTML = displayCases.map((c, i) => createCaseTagHTML(c, cellKey, i, onlyMRI)).join('');
             const blockedClass = cellData.blocked ? 'blocked' : '';
             const blockedNote = cellData.blocked && cellData.blockedReason ? `<div class="blocked-note">${cellData.blockedReason}</div>` : '';
+            
+            // 判斷是否為過去的日期
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            const cellDate = new Date(date);
+            cellDate.setHours(0, 0, 0, 0);
+            const pastClass = cellDate < today ? 'past-date' : '';
 
             return `
-                <div class="cell ${blockedClass}" data-cell-key="${cellKey}">
+                <div class="cell ${blockedClass} ${pastClass}" data-cell-key="${cellKey}">
                     ${blockedNote}
                     <div class="cases">${casesHTML}</div>
                 </div>
@@ -1923,9 +1964,16 @@
             const displayCases = [...mriCases, { type: 'slot', isEmpty: true }];
 
             const casesHTML = displayCases.map((c, i) => createSaturdayCaseTag(c, cellKey, i)).join('');
+            
+            // 判斷是否為過去的日期
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            const cellDate = new Date(date);
+            cellDate.setHours(0, 0, 0, 0);
+            const pastClass = cellDate < today ? 'past-date' : '';
 
             return `
-                <div class="cell saturday-cell" data-cell-key="${cellKey}" data-saturday="true">
+                <div class="cell saturday-cell ${pastClass}" data-cell-key="${cellKey}" data-saturday="true">
                     <div class="cases">${casesHTML}</div>
                 </div>
             `;
@@ -2514,16 +2562,30 @@
             }
             
             // 過濾掉空位，只保留真正案例
-            const realCases = cellCases.filter(c => c && c.type !== 'slot' && !c.isEmpty);
+            let realCases = cellCases.filter(c => c && c.type !== 'slot' && !c.isEmpty);
 
             if (editingCase !== null && editingCase._originalIndex !== undefined) {
-                // 編輯：用原始 index 直接替換
-                cellCases[editingCase._originalIndex] = caseData;
+                // 編輯：找到原本的案例並替換
+                const oldCase = cellCases[editingCase._originalIndex];
+                const realIndex = realCases.findIndex(c => c === oldCase);
+                if (realIndex !== -1) {
+                    realCases[realIndex] = caseData;
+                } else {
+                    realCases.push(caseData);
+                }
             } else {
-                // 新增：直接加到真正案例的最後
-                // 先清空舊陣列，重建為只有真正案例 + 新案例
-                state.cellData[state.selectedCell].cases = [...realCases, caseData];
+                // 新增
+                realCases.push(caseData);
             }
+            
+            // 按時間排序（時間早的在前，沒有時間的排最後）
+            realCases.sort((a, b) => {
+                const timeA = a.time || '99:99';
+                const timeB = b.time || '99:99';
+                return timeA.localeCompare(timeB);
+            });
+            
+            state.cellData[state.selectedCell].cases = realCases;
 
             saveToStorage();
             renderTabContent();
