@@ -2298,6 +2298,7 @@
                 const cell = e.target.closest('.cell');
                 // 檢查是否為手機唯讀模式（不是編輯模式）
                 const isMobileReadonly = document.body.classList.contains('mobile-readonly');
+                const isMobileEditing = document.body.classList.contains('mobile-editing');
 
                 if (popupBtn) {
                     const type = popupBtn.dataset.type;
@@ -2329,6 +2330,9 @@
                         if (isMobileReadonly) {
                             // 手機唯讀模式：顯示詳細資訊
                             showCaseDetail(caseTag.dataset.cellKey, parseInt(caseTag.dataset.index));
+                        } else if (isMobileEditing) {
+                            // 手機編輯模式：直接編輯案例
+                            editCase(caseTag.dataset.cellKey, parseInt(caseTag.dataset.index));
                         }
                     }
                 } else if (cell && !e.target.closest('.case-actions')) {
