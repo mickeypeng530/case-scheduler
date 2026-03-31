@@ -2809,7 +2809,15 @@
                 const deleteBtn = e.target.closest('.reading-item-btn.delete');
                 
                 if (openBtn) {
-                    window.open(openBtn.dataset.url, '_blank');
+                    const url = openBtn.dataset.url;
+                    // iOS PWA 模式下，用 <a> 標籤強制在 Safari 開啟
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.target = '_blank';
+                    a.rel = 'noopener noreferrer';
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
                 }
                 
                 if (deleteBtn) {
