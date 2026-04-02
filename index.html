@@ -23,6 +23,7 @@
             --color-sono: #22c55e;
             --color-mri: #c4b5fd;
             --color-arthro: #ec4899;
+            --color-other: #f97316;
             --color-slot: #64748b;
             --color-blocked: #ef4444;
             --color-note: #6366f1;
@@ -363,6 +364,7 @@
         .case-tag.mri { background: var(--color-mri); color: #1a1a2e; width: 50%; font-size: 0.6rem; padding: 2px 4px; margin-left: auto; }
         .case-tag.mri.full-width { width: 100%; margin-left: 0; font-size: inherit; padding: inherit; }
         .case-tag.arthro { background: var(--color-arthro); color: white; }
+        .case-tag.other { background: var(--color-other); color: white; }
         .case-tag.slot { background: transparent; color: var(--text-muted); border: 1px dashed var(--border); padding: 2px 4px; font-size: 0.6rem; }
         .case-tag.note { background: var(--color-note); color: white; }
 
@@ -453,6 +455,7 @@
         .type-popup-btn.sono { background: var(--color-sono); color: #1a1a2e; }
         .type-popup-btn.mri { background: var(--color-mri); color: #1a1a2e; }
         .type-popup-btn.arthro { background: var(--color-arthro); color: white; }
+        .type-popup-btn.other { background: var(--color-other); color: white; }
         .type-popup-btn.note { background: var(--color-note); color: white; }
         .type-popup-btn.blocked { background: var(--color-blocked); color: white; }
 
@@ -562,6 +565,7 @@
         .stats-item.sono { background: var(--color-sono); color: #1a1a2e; }
         .stats-item.mri { background: var(--color-mri); color: #1a1a2e; }
         .stats-item.arthro { background: var(--color-arthro); color: white; }
+        .stats-item.other { background: var(--color-other); color: white; }
         
         .stats-detail {
             border-top: 1px solid var(--border);
@@ -992,6 +996,7 @@
                 <button class="type-popup-btn sono" data-type="sono">Sono</button>
                 <button class="type-popup-btn mri" data-type="mri">MRI</button>
                 <button class="type-popup-btn arthro" data-type="arthro">Arthro</button>
+                <button class="type-popup-btn other" data-type="other">Other</button>
                 <button class="type-popup-btn note" data-type="note">📝 備註</button>
                 <button class="type-popup-btn blocked" data-type="blocked">✕ 不可用</button>
             </div>
@@ -1014,6 +1019,21 @@
     <div class="modal-overlay" id="case-modal">
         <div class="modal">
             <h3 id="modal-title">新增案例</h3>
+            <div class="modal-field" id="other-subtype-field" style="display: none;">
+                <label for="other-subtype">類型</label>
+                <select id="other-subtype">
+                    <option value="PICC">PICC</option>
+                    <option value="Bone Biopsy">Bone Biopsy</option>
+                    <option value="Drain">Drain</option>
+                    <option value="PCN">PCN</option>
+                    <option value="Lung Biopsy">Lung Biopsy</option>
+                    <option value="_custom">自訂...</option>
+                </select>
+            </div>
+            <div class="modal-field" id="other-custom-field" style="display: none;">
+                <label for="other-custom">自訂類型</label>
+                <input type="text" id="other-custom" placeholder="輸入類型名稱">
+            </div>
             <div class="modal-field">
                 <label for="case-time">時間</label>
                 <input type="text" id="case-time" placeholder="例如：09:00" maxlength="5">
@@ -1224,8 +1244,10 @@
         const dayNames = ['一', '二', '三', '四', '五'];
         const caseTypeLabels = {
             'ct-nb': 'CT NB', 'ct-nb-prf': 'CT NB pRF', 'stame': 'sTAME', 'ctame': 'cTAME',
-            'sono': 'Sono', 'mri': 'MRI', 'arthro': 'Arthro', 'slot': '空位', 'note': '備註'
+            'sono': 'Sono', 'mri': 'MRI', 'arthro': 'Arthro', 'other': 'Other', 'slot': '空位', 'note': '備註'
         };
+        // Other 常用子類型
+        const otherSubtypes = ['PICC', 'Bone Biopsy', 'Drain', 'PCN', 'Lung Biopsy'];
         const DEFAULT_SLOTS_PER_CELL = 2;
         let eventsBound = false;  // 防止重複綁定事件
 
@@ -1575,12 +1597,12 @@
             // 統計各類型數量（ct-nb+ct-nb-prf 合併，stame+ctame 合併為 tame）
             const typeCounts = {
                 'ct-nb': 0, 'tame': 0, 
-                'sono': 0, 'mri': 0, 'arthro': 0
+                'sono': 0, 'mri': 0, 'arthro': 0, 'other': 0
             };
             
             // 收集所有案例
             const allCases = [];
-            const validTypes = ['ct-nb', 'ct-nb-prf', 'stame', 'ctame', 'sono', 'mri', 'arthro'];
+            const validTypes = ['ct-nb', 'ct-nb-prf', 'stame', 'ctame', 'sono', 'mri', 'arthro', 'other'];
             
             for (let d = new Date(statsStart); d <= statsEnd; d.setDate(d.getDate() + 1)) {
                 ['AM', 'PM'].forEach(period => {
@@ -1648,7 +1670,11 @@
                     const dayName = dayNames[c.date.getDay()];
                     const statusClass = c.status === 'tentative' ? 'tentative' : '';
                     const statusText = c.status === 'tentative' ? '暫定' : '確定';
-                    const typeLabel = caseTypeLabels[c.type] || c.type;
+                    // Other 顯示子類型名稱
+                    let typeLabel = caseTypeLabels[c.type] || c.type;
+                    if (c.type === 'other' && c.otherSubtype) {
+                        typeLabel = c.otherSubtype;
+                    }
                     return `
                         <div class="stats-detail-item">
                             <span class="date">${dateStr} (${dayName}) ${c.period}</span>
@@ -1681,7 +1707,8 @@
             'ctame': 'cTAME',
             'sono': 'SONO INJ',
             'mri': 'MRI',
-            'arthro': 'Arthro'
+            'arthro': 'Arthro',
+            'other': 'Other'
         };
         
         // 匯出 Word 文件
@@ -1698,7 +1725,7 @@
             
             // 收集所有案例（排除備註和不可用）
             const allCases = [];
-            const validTypes = ['ct-nb', 'ct-nb-prf', 'stame', 'ctame', 'sono', 'mri', 'arthro'];
+            const validTypes = ['ct-nb', 'ct-nb-prf', 'stame', 'ctame', 'sono', 'mri', 'arthro', 'other'];
             
             for (let d = new Date(statsStart); d <= statsEnd; d.setDate(d.getDate() + 1)) {
                 ['AM', 'PM'].forEach(period => {
@@ -1744,7 +1771,11 @@
             // 建立表格列
             const tableRows = allCases.map(c => {
                 const dateStr = `${String(c.date.getMonth() + 1).padStart(2, '0')}/${String(c.date.getDate()).padStart(2, '0')}`;
-                const typeLabel = exportTypeLabels[c.type] || c.type;
+                // Other 類型顯示子類型名稱
+                let typeLabel = exportTypeLabels[c.type] || c.type;
+                if (c.type === 'other' && c.otherSubtype) {
+                    typeLabel = c.otherSubtype;
+                }
                 const col5Text = `${dateStr} ${c.time || ''} ${typeLabel}`.trim();
                 
                 // 第3欄顏色：只有 MRI=紫色、Arthro=黃色，其他不加顏色
@@ -1999,7 +2030,11 @@
 
         function createCaseTagHTML(caseData, cellKey, index, onlyMRI = false) {
             const isEmpty = caseData.isEmpty || caseData.type === 'slot';
-            const typeLabel = caseTypeLabels[caseData.type] || caseData.type;
+            // Other 類型顯示子類型名稱
+            let typeLabel = caseTypeLabels[caseData.type] || caseData.type;
+            if (caseData.type === 'other' && caseData.otherSubtype) {
+                typeLabel = caseData.otherSubtype;
+            }
             const tentativeClass = caseData.status === 'tentative' ? 'tentative' : '';
             const typeClass = isEmpty ? 'slot' : caseData.type;
             
@@ -2419,9 +2454,13 @@
             const chartField = document.getElementById('chart-no-field');
             const noteField = document.getElementById('note-field');
             const statusField = document.getElementById('status-field');
+            const otherSubtypeField = document.getElementById('other-subtype-field');
+            const otherCustomField = document.getElementById('other-custom-field');
             const timeInput = document.getElementById('case-time');
             const chartInput = document.getElementById('chart-no');
             const noteInput = document.getElementById('note-text');
+            const otherSubtypeSelect = document.getElementById('other-subtype');
+            const otherCustomInput = document.getElementById('other-custom');
 
             const defaultTime = getDefaultTime(type, state.selectedCell);
             timeInput.value = existingData?.time || defaultTime;
@@ -2432,6 +2471,12 @@
                 btn.classList.toggle('active', btn.dataset.status === (existingData?.status || 'confirmed'));
             });
 
+            // 重置 Other 相關欄位
+            otherSubtypeField.style.display = 'none';
+            otherCustomField.style.display = 'none';
+            otherSubtypeSelect.value = 'PICC';
+            otherCustomInput.value = '';
+
             if (type === 'note') {
                 title.textContent = existingData ? '編輯備註' : '新增備註';
                 chartField.style.display = 'none';
@@ -2441,7 +2486,25 @@
                 title.textContent = existingData ? '編輯 MRI' : '新增 MRI 時段';
                 chartField.style.display = 'none';
                 noteField.style.display = 'none';
-                statusField.style.display = 'block';  // MRI 也可選狀態
+                statusField.style.display = 'block';
+            } else if (type === 'other') {
+                title.textContent = existingData ? '編輯 Other' : '新增 Other';
+                chartField.style.display = 'block';
+                noteField.style.display = 'none';
+                statusField.style.display = 'block';
+                otherSubtypeField.style.display = 'block';
+                
+                // 編輯時載入現有子類型
+                if (existingData?.otherSubtype) {
+                    const isPreset = otherSubtypes.includes(existingData.otherSubtype);
+                    if (isPreset) {
+                        otherSubtypeSelect.value = existingData.otherSubtype;
+                    } else {
+                        otherSubtypeSelect.value = '_custom';
+                        otherCustomField.style.display = 'block';
+                        otherCustomInput.value = existingData.otherSubtype;
+                    }
+                }
             } else {
                 title.textContent = existingData ? `編輯 ${caseTypeLabels[type]}` : `新增 ${caseTypeLabels[type]}`;
                 chartField.style.display = 'block';
@@ -2452,6 +2515,8 @@
             modal.classList.add('show');
             if (type === 'note') {
                 noteInput.focus();
+            } else if (type === 'other') {
+                otherSubtypeSelect.focus();
             } else if (defaultTime) {
                 chartInput.focus();
             } else {
@@ -2514,6 +2579,17 @@
                     btn.classList.add('active');
                 });
             });
+            
+            // Other 子類型下拉選單切換
+            document.getElementById('other-subtype').addEventListener('change', (e) => {
+                const customField = document.getElementById('other-custom-field');
+                if (e.target.value === '_custom') {
+                    customField.style.display = 'block';
+                    document.getElementById('other-custom').focus();
+                } else {
+                    customField.style.display = 'none';
+                }
+            });
 
             document.getElementById('blocked-cancel').addEventListener('click', () => {
                 document.getElementById('blocked-modal').classList.remove('show');
@@ -2526,7 +2602,7 @@
                 document.getElementById('case-detail-modal').classList.remove('show');
             });
 
-            ['case-time', 'chart-no', 'note-text'].forEach(id => {
+            ['case-time', 'chart-no', 'note-text', 'other-custom'].forEach(id => {
                 document.getElementById(id).addEventListener('keydown', (e) => {
                     if (e.key === 'Enter') { e.preventDefault(); saveCaseFromModal(); }
                 });
@@ -2553,6 +2629,16 @@
             time = formatTimeInput(time);
 
             const caseData = { type: currentModalType, time, chartNo, note, status };
+            
+            // 處理 Other 子類型
+            if (currentModalType === 'other') {
+                const subtypeSelect = document.getElementById('other-subtype').value;
+                if (subtypeSelect === '_custom') {
+                    caseData.otherSubtype = document.getElementById('other-custom').value.trim() || 'Other';
+                } else {
+                    caseData.otherSubtype = subtypeSelect;
+                }
+            }
 
             if (!state.cellData[state.selectedCell]) {
                 state.cellData[state.selectedCell] = { blocked: false, blockedReason: '', cases: [] };
