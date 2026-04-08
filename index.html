@@ -476,6 +476,11 @@
 
         .modal-overlay.show { display: flex; }
 
+        /* 透明安全區容器 */
+        .modal-wrapper {
+            padding: 40px;
+        }
+
         .modal {
             background: var(--bg-secondary);
             border-radius: 10px;
@@ -1021,6 +1026,7 @@
 
     <!-- Case Modal -->
     <div class="modal-overlay" id="case-modal">
+        <div class="modal-wrapper">
         <div class="modal">
             <h3 id="modal-title">新增案例</h3>
             <div class="modal-field" id="other-subtype-field" style="display: none;">
@@ -1063,10 +1069,12 @@
                 <button type="button" class="modal-btn confirm" id="modal-confirm">確定</button>
             </div>
         </div>
+        </div>
     </div>
 
     <!-- Blocked Modal -->
     <div class="modal-overlay" id="blocked-modal">
+        <div class="modal-wrapper">
         <div class="modal">
             <h3>標記不可用</h3>
             <div class="modal-field">
@@ -1078,10 +1086,12 @@
                 <button class="modal-btn confirm" id="blocked-confirm">確定</button>
             </div>
         </div>
+        </div>
     </div>
 
     <!-- New Tab Modal -->
     <div class="modal-overlay" id="new-tab-modal">
+        <div class="modal-wrapper">
         <div class="modal">
             <h3>新增排程</h3>
             <div class="modal-field">
@@ -1097,10 +1107,12 @@
                 <button class="modal-btn confirm" id="new-tab-confirm">建立</button>
             </div>
         </div>
+        </div>
     </div>
 
     <!-- Delete Tab Confirm -->
     <div class="modal-overlay" id="delete-tab-modal">
+        <div class="modal-wrapper">
         <div class="modal">
             <h3>刪除排程</h3>
             <p style="margin-bottom: 16px; color: var(--text-secondary);">確定要刪除此排程？資料將無法復原。</p>
@@ -1109,10 +1121,12 @@
                 <button class="modal-btn danger" id="delete-tab-confirm">刪除</button>
             </div>
         </div>
+        </div>
     </div>
 
     <!-- 閱讀清單 Modal -->
     <div class="modal-overlay" id="reading-list-modal">
+        <div class="modal-wrapper">
         <div class="modal reading-list-modal">
             <div class="reading-list-header">
                 <h3>📖 閱讀清單</h3>
@@ -1130,10 +1144,12 @@
                 <p style="font-size: 0.75rem; opacity: 0.7;">貼上網址開始收藏</p>
             </div>
         </div>
+        </div>
     </div>
 
     <!-- 案例詳細資訊（手機唯讀用） -->
     <div class="modal-overlay" id="case-detail-modal">
+        <div class="modal-wrapper">
         <div class="modal">
             <h3 id="detail-title">案例資訊</h3>
             <div style="margin-bottom: 16px;">
@@ -1146,8 +1162,6 @@
                 <button type="button" class="modal-btn confirm" id="detail-close">關閉</button>
             </div>
         </div>
-    </div>
-            </div>
         </div>
     </div>
 
