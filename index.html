@@ -1055,6 +1055,7 @@
             </div>
             <div class="modal-buttons">
                 <button type="button" class="modal-btn cancel" id="modal-cancel">取消</button>
+                <button type="button" class="modal-btn delete" id="modal-delete" style="display:none; background:#ef4444;">刪除</button>
                 <button type="button" class="modal-btn confirm" id="modal-confirm">確定</button>
             </div>
         </div>
@@ -2519,6 +2520,12 @@
                 statusField.style.display = 'block';
             }
 
+            // 只有週六 MRI 編輯模式才顯示刪除按鈕（因為格子太窄點不到外部按鈕）
+            const deleteBtn = document.getElementById('modal-delete');
+            const isSaturdayMRI = existingData && type === 'mri' && state.selectedCell && 
+                new Date(state.selectedCell.split('-').slice(0, 3).join('-')).getDay() === 6;
+            deleteBtn.style.display = isSaturdayMRI ? 'block' : 'none';
+
             modal.classList.add('show');
             if (type === 'note') {
                 noteInput.focus();
@@ -2577,6 +2584,16 @@
             });
 
             document.getElementById('modal-confirm').addEventListener('click', saveCaseFromModal);
+
+            // 刪除按鈕
+            document.getElementById('modal-delete').addEventListener('click', () => {
+                if (editingCase && editingCase._originalIndex !== undefined) {
+                    const cellKey = state.selectedCell;
+                    deleteCase(cellKey, editingCase._originalIndex);
+                    document.getElementById('case-modal').classList.remove('show');
+                    editingCase = null;
+                }
+            });
 
             document.querySelectorAll('.status-btn').forEach(btn => {
                 btn.addEventListener('click', (e) => {
