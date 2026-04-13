@@ -268,10 +268,10 @@
             cursor: pointer;
             transition: all 0.15s ease;
             position: relative;
-            overflow: visible;
+            overflow: hidden;
         }
 
-        .cell:hover { background: rgba(255,255,255,0.03); border-color: var(--border); z-index: 5; }
+        .cell:hover { background: rgba(255,255,255,0.03); border-color: var(--border); }
         .cell.selected { border-color: var(--color-ct-nb); background: rgba(251,191,36,0.1); }
         
         /* 過去日期的格子 */
@@ -336,12 +336,13 @@
             pointer-events: none;
         }
 
-        .cases { display: flex; flex-direction: column; gap: 2px; align-items: flex-start; overflow: visible; }
+        .cases { display: flex; flex-direction: column; gap: 2px; align-items: flex-start; }
 
         .case-tag {
             padding: 3px 5px;
+            padding-right: 36px; /* 預留兩個按鈕空間 16*2 + 間距 */
             border-radius: 4px;
-            font-size: 0.7rem;
+            font-size: clamp(0.5rem, 0.9vw, 0.7rem);
             font-weight: 600;
             display: flex;
             align-items: center;
@@ -349,7 +350,7 @@
             cursor: grab;
             transition: all 0.1s ease;
             width: 100%;
-            overflow: visible;
+            overflow: hidden;
             position: relative;
             box-sizing: border-box;
         }
@@ -363,72 +364,60 @@
         .case-tag.stame { background: var(--color-stame); color: white; }
         .case-tag.ctame { background: var(--color-ctame); color: #1a1a2e; }
         .case-tag.sono { background: var(--color-sono); color: #1a1a2e; }
-        .case-tag.mri { background: var(--color-mri); color: #1a1a2e; width: 50%; font-size: 0.6rem; padding: 2px 4px; margin-left: auto; }
-        .case-tag.mri.full-width { width: 100%; margin-left: 0; font-size: inherit; padding: inherit; }
+        .case-tag.mri { background: var(--color-mri); color: #1a1a2e; width: 50%; font-size: clamp(0.45rem, 0.8vw, 0.6rem); margin-left: auto; }
+        .case-tag.mri.full-width { width: 100%; margin-left: 0; font-size: clamp(0.5rem, 0.9vw, 0.7rem); }
         .case-tag.arthro { background: var(--color-arthro); color: white; }
         .case-tag.other { background: var(--color-other); color: white; }
-        .case-tag.slot { background: transparent; color: var(--text-muted); border: 1px dashed var(--border); padding: 2px 4px; font-size: 0.6rem; width: 100%; }
+        .case-tag.slot { background: transparent; color: var(--text-muted); border: 1px dashed var(--border); padding: 2px 4px; font-size: clamp(0.45rem, 0.8vw, 0.6rem); width: 100%; }
         .case-tag.note { background: var(--color-note); color: white; width: 50%; }
 
         .case-info { display: flex; align-items: center; gap: 3px; overflow: hidden; flex: 1; }
-        .case-type { font-weight: 600; font-size: 0.65rem; white-space: nowrap; flex-shrink: 0; }
-        .case-detail { font-size: 0.6rem; opacity: 0.85; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .case-type { font-weight: 600; font-size: clamp(0.5rem, 0.85vw, 0.65rem); white-space: nowrap; flex-shrink: 0; }
+        .case-detail { font-size: clamp(0.45rem, 0.8vw, 0.6rem); opacity: 0.85; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         
         /* 滑鼠移上去時 z-index 提高 */
         .case-tag:hover { 
-            z-index: 20; 
+            z-index: 10; 
         }
-        /* 備註不再 hover 展開，維持固定 50% */
         .case-tag:hover .case-info { overflow: visible; }
         .case-tag:hover .case-detail { overflow: visible; white-space: nowrap; }
 
-        /* 按鈕容器 */
+        /* 按鈕容器 - 固定在右側預留空間 */
         .case-actions { 
             display: flex; 
-            gap: 1px; 
+            gap: 2px; 
             opacity: 0; 
             transition: opacity 0.15s; 
             position: absolute;
             top: 50%;
-            right: 2px;
+            right: 3px;
             transform: translateY(-50%);
             z-index: 25;
         }
         .case-tag:hover .case-actions { opacity: 1; }
 
-        /* 50% 寬度標籤（備註、半寬 MRI）- 刪除按鈕突出 */
-        .case-tag.note .case-actions,
-        .case-tag.mri:not(.full-width) .case-actions {
-            right: -16px;
-        }
-        .case-tag.note .case-action-btn.edit-btn,
-        .case-tag.mri:not(.full-width) .case-action-btn.edit-btn {
-            position: absolute;
-            right: 18px;
-        }
-
         .case-action-btn {
-            background: rgba(0,0,0,0.08);
+            background: rgba(0,0,0,0.05);
             border: none;
-            color: rgba(255,255,255,0.6);
-            width: 14px;
-            height: 14px;
-            border-radius: 2px;
+            color: rgba(255,255,255,0.5);
+            width: 16px;
+            height: 16px;
+            border-radius: 3px;
             cursor: pointer;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 0.55rem;
+            font-size: 0.6rem;
             transition: background 0.1s, color 0.1s;
         }
 
         .case-action-btn:hover { 
-            background: rgba(0,0,0,0.25); 
-            color: rgba(255,255,255,0.9);
+            background: rgba(0,0,0,0.3); 
+            color: rgba(255,255,255,0.95);
         }
         
         .case-action-btn.delete-btn:hover { 
-            background: rgba(239,68,68,0.7);
+            background: rgba(239,68,68,0.8);
             color: white;
         }
 
@@ -2555,10 +2544,12 @@
             }
 
             // 只有週六 MRI 編輯模式才顯示刪除按鈕（因為格子太窄點不到外部按鈕）
+            // 或手機編輯模式下編輯既有案例時也顯示刪除按鈕
             const deleteBtn = document.getElementById('modal-delete');
             const isSaturdayMRI = existingData && type === 'mri' && state.selectedCell && 
                 new Date(state.selectedCell.split('-').slice(0, 3).join('-')).getDay() === 6;
-            deleteBtn.style.display = isSaturdayMRI ? 'block' : 'none';
+            const isMobileEditing = document.body.classList.contains('mobile-editing') && existingData;
+            deleteBtn.style.display = (isSaturdayMRI || isMobileEditing) ? 'block' : 'none';
 
             modal.classList.add('show');
             if (type === 'note') {
