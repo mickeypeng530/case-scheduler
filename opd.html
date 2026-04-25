@@ -565,6 +565,17 @@
 <div class="modal-overlay" id="patient-modal">
     <div class="modal">
         <h3 id="patient-modal-title">新增病人</h3>
+
+        <!-- 從 docx 整列貼上自動解析 -->
+        <div class="field" id="paste-from-docx-field">
+            <label style="display: flex; justify-content: space-between; align-items: center;">
+                <span>📋 從 Word 整列貼上（可選，自動填入下方欄位）</span>
+                <button type="button" id="pt-paste-parse-btn" style="padding: 4px 10px; background: var(--bg-tertiary); border: 1px solid var(--border); color: var(--text-primary); border-radius: 4px; font-family: inherit; font-size: 0.78rem; cursor: pointer;">解析填入</button>
+            </label>
+            <textarea id="pt-paste-input" placeholder="從 Word OPD 表格選整列複製貼上即可（10 欄、Tab 分隔）" style="min-height: 50px;"></textarea>
+            <div id="pt-paste-status" style="font-size: 0.78rem; color: var(--text-muted); margin-top: 4px;"></div>
+        </div>
+
         <div class="field">
             <label>病歷號 <span style="color: var(--color-danger)">*</span></label>
             <input type="text" id="pt-record-number" placeholder="例：W61564">
@@ -915,6 +926,95 @@
         document.getElementById('patient-modal').classList.remove('show');
         state.editingRecordNumber = null;
         state.currentTags = [];
+        document.getElementById('pt-paste-input').value = '';
+        document.getElementById('pt-paste-status').textContent = '';
+    }
+
+    // 從 docx 整列貼上解析
+    // 預期欄位順序：序號 / 病歷號(姓) / 年齡性別 / eGFR / 額外 / Exam / Plan / NB / 鬆 / f/u
+    function parsePastedRow(raw) {
+        if (!raw || !raw.trim()) {
+            return { ok: false, error: '請先貼上資料' };
+        }
+        // 取第一行（避免多行）
+        const firstLine = raw.split(/\r?\n/).find(l => l.trim()) || raw;
+        // 主要靠 Tab 分隔，少數情況可能是多空白
+        let parts = firstLine.split('\t').map(s => s.trim());
+        if (parts.length < 4) {
+            // 嘗試以多空白分隔（複製方式不同）
+            parts = firstLine.split(/\s{2,}/).map(s => s.trim());
+        }
+        if (parts.length < 4) {
+            return { ok: false, error: `欄位偵測失敗（只解析到 ${parts.length} 欄），請確認從 Word 表格列複製` };
+        }
+
+        // 嘗試識別「病歷號(姓)」欄位位置：通常是 parts[1]，但若使用者複製不含序號可能在 parts[0]
+        let recIdx = -1;
+        const recPattern = /^([A-Za-z]?\d{5,8})\s*(?:\(([^)]+)\))?$/;  // 容許 0-1 字母 + 5-8 位數
+        for (let i = 0; i < Math.min(parts.length, 3); i++) {
+            if (recPattern.test(parts[i])) { recIdx = i; break; }
+        }
+        if (recIdx === -1) {
+            return { ok: false, error: '找不到病歷號（前 3 欄都不像病歷號 (姓) 格式）' };
+        }
+
+        const recMatch = parts[recIdx].match(recPattern);
+        const recordNumber = recMatch[1];
+        const surname = (recMatch[2] || '').trim();
+
+        // 後續欄位相對於 recIdx
+        const ageSex = parts[recIdx + 1] || '';
+        const eGFR = parts[recIdx + 2] || '';
+        const extra = parts[recIdx + 3] || '';
+
+        // 從 extra 嘗試抓 INR
+        let INR = '', INRDate = '';
+        const inrMatch = extra.match(/INR:\s*([\d.]+)\s*(?:\(([^)]+)\))?/i);
+        if (inrMatch) {
+            INR = inrMatch[1];
+            INRDate = (inrMatch[2] || '').trim();
+        }
+
+        // tags：NB / 鬆 / f/u 三欄（最後三欄通常是這個順序）
+        const tagLabels = ['NB', '鬆', 'f/u'];
+        const tags = [];
+        const tagStartIdx = parts.length - 3;
+        if (tagStartIdx >= recIdx + 4) {
+            for (let i = 0; i < 3; i++) {
+                const cellVal = (parts[tagStartIdx + i] || '').trim();
+                if (cellVal && cellVal !== '-' && cellVal !== '─') {
+                    tags.push(tagLabels[i]);
+                }
+            }
+        }
+
+        // 也保留 Exam 與 Plan 文字（暫不寫入病人主表，作為提示）
+        const examIdx = recIdx + 4;
+        const planIdx = recIdx + 5;
+        const exam = parts[examIdx] || '';
+        const plan = parts[planIdx] || '';
+
+        return {
+            ok: true,
+            recordNumber, surname, ageSex, eGFR, extra, INR, INRDate, tags,
+            exam, plan,
+            partsCount: parts.length
+        };
+    }
+
+    function applyParsedToForm(parsed) {
+        document.getElementById('pt-record-number').value = parsed.recordNumber;
+        document.getElementById('pt-surname').value = parsed.surname;
+        document.getElementById('pt-age-sex').value = parsed.ageSex;
+        document.getElementById('pt-egfr').value = parsed.eGFR;
+        document.getElementById('pt-inr').value = parsed.INR;
+        document.getElementById('pt-inr-date').value = parsed.INRDate;
+        document.getElementById('pt-extra').value = parsed.extra;
+        // tags 合併（不覆蓋既有）
+        parsed.tags.forEach(t => {
+            if (!state.currentTags.includes(t)) state.currentTags.push(t);
+        });
+        renderTagEditor();
     }
 
     function renderTagEditor() {
@@ -990,6 +1090,32 @@
 
         // 新增按鈕
         document.getElementById('add-patient-master-btn').addEventListener('click', () => openPatientModal());
+
+        // docx 整列貼上自動解析
+        document.getElementById('pt-paste-parse-btn').addEventListener('click', () => {
+            const raw = document.getElementById('pt-paste-input').value;
+            const status = document.getElementById('pt-paste-status');
+            const result = parsePastedRow(raw);
+            if (!result.ok) {
+                status.textContent = '❌ ' + result.error;
+                status.style.color = 'var(--color-danger)';
+                return;
+            }
+            applyParsedToForm(result);
+            const planNote = result.plan ? `（Exam/Plan 已偵測共 ${result.exam.length + result.plan.length} 字，但暫不寫入病人主表，待 visit 模組）` : '';
+            status.textContent = `✅ 已解析 ${result.partsCount} 欄並填入下方${result.tags.length ? `；標籤：${result.tags.join(', ')}` : ''}。${planNote}`;
+            status.style.color = 'var(--color-confirmed)';
+        });
+
+        // 貼上時自動觸發解析（按下 paste 後若內容包含 tab 直接 parse）
+        document.getElementById('pt-paste-input').addEventListener('paste', (e) => {
+            setTimeout(() => {
+                const txt = document.getElementById('pt-paste-input').value;
+                if (txt.includes('\t')) {
+                    document.getElementById('pt-paste-parse-btn').click();
+                }
+            }, 50);
+        });
 
         // 搜尋
         document.getElementById('patient-search-input').addEventListener('input', () => renderPatientMaster());
