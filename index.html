@@ -905,6 +905,29 @@
             /* header 整體擠在一起，間距縮小 */
             body.mobile-readonly header { gap: 8px !important; margin-bottom: 8px; }
             body.mobile-readonly header > div { gap: 6px !important; }
+
+            /* 手機：tabs 改為橫向捲動，避免多行擠壓 */
+            body.mobile-readonly .tabs-container {
+                flex-wrap: nowrap;
+                overflow-x: auto;
+                overflow-y: hidden;
+                padding: 6px 8px;
+                /* 隱藏捲軸，但仍可滑動 */
+                scrollbar-width: thin;
+                -webkit-overflow-scrolling: touch;
+            }
+            body.mobile-readonly .tabs-container::-webkit-scrollbar { height: 3px; }
+            body.mobile-readonly .tabs-container::-webkit-scrollbar-thumb {
+                background: var(--border);
+                border-radius: 2px;
+            }
+            body.mobile-readonly .tab {
+                flex-shrink: 0;
+                padding: 6px 10px;
+                font-size: 0.78rem;
+            }
+            body.mobile-readonly .add-tab,
+            body.mobile-readonly .old-tabs-btn { flex-shrink: 0; }
             body.mobile-readonly .type-popup { display: none !important; }
             
             /* 手機版編輯模式：顯示新增按鈕，但保持隱藏刪除/編輯 */
