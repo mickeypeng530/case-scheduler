@@ -931,74 +931,135 @@
     }
 
     // 從 docx 整列貼上解析
-    // 預期欄位順序：序號 / 病歷號(姓) / 年齡性別 / eGFR / 額外 / Exam / Plan / NB / 鬆 / f/u
+    // 支援兩種格式：
+    //  1. Tab 分隔單列（從表格複製）：序號\t病歷號(姓)\t年齡\teGFR\t...
+    //  2. 換行分隔多行（每欄一行）：每行一個欄位
     function parsePastedRow(raw) {
         if (!raw || !raw.trim()) {
             return { ok: false, error: '請先貼上資料' };
         }
-        // 取第一行（避免多行）
-        const firstLine = raw.split(/\r?\n/).find(l => l.trim()) || raw;
-        // 主要靠 Tab 分隔，少數情況可能是多空白
-        let parts = firstLine.split('\t').map(s => s.trim());
-        if (parts.length < 4) {
-            // 嘗試以多空白分隔（複製方式不同）
-            parts = firstLine.split(/\s{2,}/).map(s => s.trim());
+
+        const hasTabs = raw.includes('\t');
+        if (hasTabs) {
+            return parseTabSeparated(raw);
+        } else {
+            return parseLineBased(raw);
         }
+    }
+
+    const RECORD_PATTERN = /^\s*([A-Za-z]?\d{5,8})\s*(?:\(([^)]+)\))?\s*$/;
+    const PLAN_DATE_PATTERN = /^\s*[\*\-]?\s*(\d{1,2}\/\d{1,2}|\d{2}\/\d{1,2}\/\d{1,2})\b/;
+    const TAG_LABELS = ['NB', '鬆', 'f/u'];
+
+    function extractINR(text) {
+        const m = (text || '').match(/INR:\s*([\d.]+)\s*(?:\(([^)]+)\))?/i);
+        if (!m) return { INR: '', INRDate: '' };
+        return { INR: m[1], INRDate: (m[2] || '').trim() };
+    }
+
+    // Tab 分隔解析（單列、cell 內可能含換行）
+    function parseTabSeparated(raw) {
+        const parts = raw.split('\t').map(s => s.trim());
         if (parts.length < 4) {
-            return { ok: false, error: `欄位偵測失敗（只解析到 ${parts.length} 欄），請確認從 Word 表格列複製` };
+            return { ok: false, error: `Tab 欄位過少（只 ${parts.length} 欄）` };
         }
 
-        // 嘗試識別「病歷號(姓)」欄位位置：通常是 parts[1]，但若使用者複製不含序號可能在 parts[0]
         let recIdx = -1;
-        const recPattern = /^([A-Za-z]?\d{5,8})\s*(?:\(([^)]+)\))?$/;  // 容許 0-1 字母 + 5-8 位數
         for (let i = 0; i < Math.min(parts.length, 3); i++) {
-            if (recPattern.test(parts[i])) { recIdx = i; break; }
+            if (RECORD_PATTERN.test(parts[i])) { recIdx = i; break; }
         }
         if (recIdx === -1) {
-            return { ok: false, error: '找不到病歷號（前 3 欄都不像病歷號 (姓) 格式）' };
+            return { ok: false, error: '前 3 欄找不到病歷號 (姓) 格式' };
         }
 
-        const recMatch = parts[recIdx].match(recPattern);
-        const recordNumber = recMatch[1];
-        const surname = (recMatch[2] || '').trim();
+        const recMatch = parts[recIdx].match(RECORD_PATTERN);
+        const extra = (parts[recIdx + 3] || '').replace(/\n+/g, ' / ');
+        const inr = extractINR(extra);
 
-        // 後續欄位相對於 recIdx
-        const ageSex = parts[recIdx + 1] || '';
-        const eGFR = parts[recIdx + 2] || '';
-        const extra = parts[recIdx + 3] || '';
-
-        // 從 extra 嘗試抓 INR
-        let INR = '', INRDate = '';
-        const inrMatch = extra.match(/INR:\s*([\d.]+)\s*(?:\(([^)]+)\))?/i);
-        if (inrMatch) {
-            INR = inrMatch[1];
-            INRDate = (inrMatch[2] || '').trim();
-        }
-
-        // tags：NB / 鬆 / f/u 三欄（最後三欄通常是這個順序）
-        const tagLabels = ['NB', '鬆', 'f/u'];
         const tags = [];
         const tagStartIdx = parts.length - 3;
         if (tagStartIdx >= recIdx + 4) {
             for (let i = 0; i < 3; i++) {
-                const cellVal = (parts[tagStartIdx + i] || '').trim();
-                if (cellVal && cellVal !== '-' && cellVal !== '─') {
-                    tags.push(tagLabels[i]);
-                }
+                const v = (parts[tagStartIdx + i] || '').trim();
+                if (v && v !== '-' && v !== '─') tags.push(TAG_LABELS[i]);
             }
         }
 
-        // 也保留 Exam 與 Plan 文字（暫不寫入病人主表，作為提示）
-        const examIdx = recIdx + 4;
-        const planIdx = recIdx + 5;
-        const exam = parts[examIdx] || '';
-        const plan = parts[planIdx] || '';
+        return {
+            ok: true,
+            mode: 'tab',
+            recordNumber: recMatch[1],
+            surname: (recMatch[2] || '').trim(),
+            ageSex: parts[recIdx + 1] || '',
+            eGFR: parts[recIdx + 2] || '',
+            extra,
+            ...inr,
+            tags,
+            exam: parts[recIdx + 4] || '',
+            plan: parts[recIdx + 5] || '',
+            partsCount: parts.length
+        };
+    }
+
+    // 換行分隔解析（每行一個欄位；多行 cell 視為連續多個欄位）
+    function parseLineBased(raw) {
+        const lines = raw.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+        if (lines.length < 4) {
+            return { ok: false, error: `行數過少（只 ${lines.length} 行）` };
+        }
+
+        // 找病歷號行（前 5 行掃描）
+        let recIdx = -1;
+        for (let i = 0; i < Math.min(lines.length, 5); i++) {
+            if (RECORD_PATTERN.test(lines[i])) { recIdx = i; break; }
+        }
+        if (recIdx === -1) {
+            return { ok: false, error: '前 5 行找不到病歷號 (姓) 格式' };
+        }
+
+        const recMatch = lines[recIdx].match(RECORD_PATTERN);
+        const ageSex = lines[recIdx + 1] || '';
+        const eGFR = lines[recIdx + 2] || '';
+
+        // 從 recIdx+3 起，收集 extra 直到偵測到 Exam-like 或 Plan-like 行
+        // 簡化：偵測到 Plan-like 行（日期開頭）就停
+        const extraLines = [];
+        let i = recIdx + 3;
+        let examLine = '';
+        while (i < lines.length) {
+            const line = lines[i];
+            // 偵測到 Plan-like（日期開頭）就停
+            if (PLAN_DATE_PATTERN.test(line)) break;
+            // 偵測到「Exam-like」啟示語（如「L spine」、「R 」、解剖描述）— 比較難準確
+            // 簡化：把目前累積的 extraLines 與此行比較長度，若此行為描述句（沒冒號或無數字），視為 Exam
+            const looksLikeExam = !/[:：]/.test(line) && !/^\d+\.\d+/.test(line) && /[A-Za-z]/.test(line) && line.length > 12;
+            if (looksLikeExam && extraLines.length >= 1) {
+                examLine = line;
+                i++;
+                break;
+            }
+            extraLines.push(line);
+            i++;
+        }
+
+        // 剩餘行（含 Exam 後）= Plan
+        const planLines = lines.slice(i).filter(Boolean);
+        const extra = extraLines.join(' / ');
+        const inr = extractINR(extra);
 
         return {
             ok: true,
-            recordNumber, surname, ageSex, eGFR, extra, INR, INRDate, tags,
-            exam, plan,
-            partsCount: parts.length
+            mode: 'line',
+            recordNumber: recMatch[1],
+            surname: (recMatch[2] || '').trim(),
+            ageSex,
+            eGFR,
+            extra,
+            ...inr,
+            tags: [],  // 換行格式無法可靠抓到 tag
+            exam: examLine,
+            plan: planLines.join('\n'),
+            partsCount: lines.length
         };
     }
 
@@ -1102,16 +1163,19 @@
                 return;
             }
             applyParsedToForm(result);
-            const planNote = result.plan ? `（Exam/Plan 已偵測共 ${result.exam.length + result.plan.length} 字，但暫不寫入病人主表，待 visit 模組）` : '';
-            status.textContent = `✅ 已解析 ${result.partsCount} 欄並填入下方${result.tags.length ? `；標籤：${result.tags.join(', ')}` : ''}。${planNote}`;
+            const modeLabel = result.mode === 'tab' ? 'Tab 分隔' : '換行分隔';
+            const examPart = result.exam ? `；偵測到 Exam（暫存待 visit 模組）` : '';
+            const planPart = result.plan ? `；Plan ${result.plan.split('\n').length} 行（暫存待 visit 模組）` : '';
+            status.textContent = `✅ 已解析（${modeLabel}，${result.partsCount} 欄）並填入${result.tags.length ? `；標籤：${result.tags.join(', ')}` : ''}${examPart}${planPart}`;
             status.style.color = 'var(--color-confirmed)';
         });
 
-        // 貼上時自動觸發解析（按下 paste 後若內容包含 tab 直接 parse）
+        // 貼上後若內容含 tab 或多行（>= 4 行）自動觸發解析
         document.getElementById('pt-paste-input').addEventListener('paste', (e) => {
             setTimeout(() => {
                 const txt = document.getElementById('pt-paste-input').value;
-                if (txt.includes('\t')) {
+                const lineCount = txt.split(/\r?\n/).filter(l => l.trim()).length;
+                if (txt.includes('\t') || lineCount >= 4) {
                     document.getElementById('pt-paste-parse-btn').click();
                 }
             }, 50);
