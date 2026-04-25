@@ -1,0 +1,539 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OPD 系統</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-primary: #0f172a;
+            --bg-secondary: #1e293b;
+            --bg-tertiary: #334155;
+            --text-primary: #f1f5f9;
+            --text-secondary: #94a3b8;
+            --text-muted: #64748b;
+            --border: #475569;
+
+            --color-confirmed: #22c55e;
+            --color-draft: #94a3b8;
+            --color-warning: #fbbf24;
+            --color-danger: #ef4444;
+            --color-info: #3b82f6;
+            --color-tag-default: #6366f1;
+            --color-dc: #475569;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Noto Sans TC', sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+        }
+
+        .container { max-width: 1100px; margin: 0 auto; padding: 16px; }
+
+        /* Header */
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        h1 { font-size: 1.25rem; font-weight: 600; }
+        .header-right { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+        .nav-link {
+            padding: 6px 12px;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border);
+            color: var(--text-primary);
+            border-radius: 5px;
+            font-family: inherit;
+            font-size: 0.85rem;
+            text-decoration: none;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .nav-link:hover { background: var(--bg-secondary); }
+        .header-btn {
+            padding: 6px 12px;
+            background: transparent;
+            border: 1px solid var(--border);
+            color: var(--text-secondary);
+            border-radius: 5px;
+            cursor: pointer;
+            font-family: inherit;
+            font-size: 0.8rem;
+        }
+        #user-info { font-size: 0.75rem; color: var(--text-muted); }
+
+        /* Tabs */
+        .tabs {
+            display: flex;
+            gap: 4px;
+            margin-bottom: 16px;
+            background: var(--bg-secondary);
+            padding: 6px;
+            border-radius: 8px;
+        }
+        .tab {
+            padding: 8px 16px;
+            background: transparent;
+            border: none;
+            color: var(--text-secondary);
+            font-family: inherit;
+            font-size: 0.9rem;
+            cursor: pointer;
+            border-radius: 6px;
+            transition: background 0.15s;
+        }
+        .tab:hover { background: var(--bg-tertiary); color: var(--text-primary); }
+        .tab.active { background: var(--bg-tertiary); color: var(--text-primary); font-weight: 500; }
+
+        /* Tab panels */
+        .panel { display: none; }
+        .panel.active { display: block; }
+
+        /* Login screen */
+        #login-screen {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background: var(--bg-primary);
+        }
+        #login-screen .card {
+            background: var(--bg-secondary);
+            padding: 30px;
+            border-radius: 12px;
+            border: 1px solid var(--border);
+            text-align: center;
+            min-width: 280px;
+        }
+        #login-screen h2 { margin-bottom: 6px; }
+        #login-screen .hint { margin-bottom: 18px; color: var(--text-muted); font-size: 0.8rem; }
+        #login-screen input {
+            padding: 10px 15px;
+            border: 1px solid var(--border);
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            border-radius: 6px;
+            font-size: 0.95rem;
+            width: 220px;
+            font-family: inherit;
+        }
+        #login-screen input + input { margin-top: 10px; }
+        #login-screen button#login-btn {
+            margin-top: 14px;
+            padding: 10px 25px;
+            background: var(--color-warning);
+            border: none;
+            color: #1a1a2e;
+            border-radius: 6px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            font-family: inherit;
+        }
+        #login-screen .divider {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin: 18px 0;
+            color: var(--text-muted);
+            font-size: 0.8rem;
+        }
+        #login-screen .divider .line { flex: 1; height: 1px; background: var(--border); }
+        #login-screen #google-login-btn {
+            padding: 10px 18px;
+            background: white;
+            color: #3c4043;
+            border: 1px solid #dadce0;
+            border-radius: 6px;
+            font-size: 0.9rem;
+            font-weight: 500;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            font-family: inherit;
+        }
+        #login-error { color: var(--color-danger); margin-top: 15px; display: none; }
+        #login-info { color: var(--text-muted); margin-top: 15px; display: none; font-size: 0.85rem; }
+
+        /* Toolbar */
+        .toolbar {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 14px;
+            flex-wrap: wrap;
+        }
+        .toolbar select, .toolbar button {
+            padding: 8px 12px;
+            border: 1px solid var(--border);
+            background: var(--bg-secondary);
+            color: var(--text-primary);
+            border-radius: 6px;
+            font-family: inherit;
+            font-size: 0.9rem;
+            cursor: pointer;
+        }
+        .toolbar button.primary {
+            background: var(--color-info);
+            border-color: var(--color-info);
+            color: white;
+        }
+        .toolbar button.primary:hover { opacity: 0.9; }
+        .toolbar .search-toggle { background: transparent; border: 1px solid var(--border); }
+        .toolbar #search-input {
+            padding: 8px 12px;
+            border: 1px solid var(--border);
+            background: var(--bg-secondary);
+            color: var(--text-primary);
+            border-radius: 6px;
+            font-family: inherit;
+            font-size: 0.9rem;
+            display: none;
+            width: 200px;
+        }
+        .toolbar #search-input.show { display: inline-block; }
+
+        /* Tag chips */
+        .tag-filter-bar {
+            display: flex;
+            gap: 6px;
+            flex-wrap: wrap;
+            margin-bottom: 12px;
+        }
+        .tag-chip {
+            display: inline-flex;
+            align-items: center;
+            padding: 4px 10px;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border);
+            color: var(--text-secondary);
+            border-radius: 12px;
+            font-size: 0.78rem;
+            cursor: pointer;
+            user-select: none;
+        }
+        .tag-chip.active {
+            background: var(--color-tag-default);
+            border-color: var(--color-tag-default);
+            color: white;
+        }
+
+        /* Patient card (placeholder） */
+        .patient-card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 14px;
+            margin-bottom: 12px;
+        }
+        .empty-hint {
+            text-align: center;
+            color: var(--text-muted);
+            padding: 60px 20px;
+            font-size: 0.95rem;
+        }
+
+        /* DC divider */
+        .dc-divider {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin: 24px 0 16px;
+            color: var(--color-dc);
+            font-weight: 600;
+            font-size: 0.9rem;
+        }
+        .dc-divider .line { flex: 1; height: 1px; background: var(--color-dc); }
+
+        /* Status indicator (top-right of header) */
+        .status-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.75rem;
+            color: var(--text-muted);
+        }
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--color-draft);
+        }
+        .status-dot.connected { background: var(--color-confirmed); }
+        .status-dot.saving {
+            background: var(--color-warning);
+            animation: pulse 1s infinite;
+        }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+
+        /* Mobile */
+        @media (max-width: 768px) {
+            .container { padding: 10px; }
+            h1 { font-size: 1.1rem; }
+            .nav-link span.label { display: none; }
+            #user-info { display: none; }
+            #logout-btn .btn-text { display: none; }
+            .toolbar { gap: 6px; }
+        }
+
+        /* Utility */
+        .hidden { display: none !important; }
+    </style>
+    <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
+</head>
+<body>
+
+<!-- 登入畫面 -->
+<div id="login-screen">
+    <div class="card">
+        <h2>🩺 OPD 系統</h2>
+        <p class="hint">提示：intra</p>
+        <input type="email" id="email-input" placeholder="Email" autocomplete="username">
+        <input type="password" id="password-input" placeholder="密碼" autocomplete="current-password">
+        <br>
+        <button id="login-btn">登入</button>
+
+        <div class="divider">
+            <div class="line"></div><span>或</span><div class="line"></div>
+        </div>
+
+        <button id="google-login-btn">
+            <svg width="16" height="16" viewBox="0 0 18 18"><path fill="#4285F4" d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844a4.14 4.14 0 0 1-1.796 2.716v2.259h2.908c1.702-1.567 2.684-3.875 2.684-6.615z"/><path fill="#34A853" d="M9 18c2.43 0 4.467-.806 5.956-2.18l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 0 0 9 18z"/><path fill="#FBBC05" d="M3.964 10.71A5.41 5.41 0 0 1 3.682 9c0-.593.102-1.17.282-1.71V4.958H.957A8.996 8.996 0 0 0 0 9c0 1.452.348 2.827.957 4.042l3.007-2.332z"/><path fill="#EA4335" d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 0 0 .957 4.958L3.964 7.29C4.672 5.163 6.656 3.58 9 3.58z"/></svg>
+            使用 Google 登入
+        </button>
+        <p style="margin-top: 6px; color: var(--text-muted); font-size: 0.75rem;">（家裡或自己電腦使用，可持續登入）</p>
+
+        <p id="login-error">登入失敗</p>
+        <p id="login-info"></p>
+    </div>
+</div>
+
+<!-- 主畫面 -->
+<div class="container hidden" id="main-app">
+
+    <header>
+        <h1>🩺 OPD 系統</h1>
+        <div class="header-right">
+            <a href="index.html" class="nav-link" title="切換到排程系統">→ <span class="label">排程</span></a>
+            <span class="status-pill">
+                <span class="status-dot" id="status-dot"></span>
+                <span id="status-text">連線中</span>
+            </span>
+            <span id="user-info"></span>
+            <button id="logout-btn" class="header-btn" title="登出">🚪<span class="btn-text"> 登出</span></button>
+        </div>
+    </header>
+
+    <div class="tabs">
+        <button class="tab active" data-panel="panel-clinic">📅 門診日</button>
+        <button class="tab" data-panel="panel-patients">👥 病人主表</button>
+        <button class="tab" data-panel="panel-io">📥 匯入 / 匯出</button>
+    </div>
+
+    <!-- 門診日 -->
+    <div class="panel active" id="panel-clinic">
+        <div class="toolbar">
+            <select id="clinic-date-select"><option>載入中...</option></select>
+            <button class="primary" id="add-patient-btn">+ 新增病人</button>
+            <button class="search-toggle" id="search-toggle-btn">🔍</button>
+            <input type="text" id="search-input" placeholder="病歷號 / 姓">
+            <span style="flex:1"></span>
+            <button id="add-clinic-date-btn" title="新增加診日">+ 加診日</button>
+        </div>
+        <div class="tag-filter-bar" id="tag-filter-bar">
+            <!-- tag chips 動態產生 -->
+        </div>
+        <div id="patient-list">
+            <div class="empty-hint">（骨架完成，下一步開始建立病人卡片內容）</div>
+        </div>
+    </div>
+
+    <!-- 病人主表 -->
+    <div class="panel" id="panel-patients">
+        <div class="toolbar">
+            <input type="text" id="patient-search-input" placeholder="輸入病歷號或姓搜尋..." style="display: inline-block; flex: 1; max-width: 320px;">
+        </div>
+        <div id="patient-master-list">
+            <div class="empty-hint">（待實作：病人主表 CRUD 與歷次 visit timeline）</div>
+        </div>
+    </div>
+
+    <!-- 匯入 / 匯出 -->
+    <div class="panel" id="panel-io">
+        <div class="empty-hint">（待實作：Word 匯入、Procedure list 匯出）</div>
+    </div>
+
+</div>
+
+<script>
+    // ========== Firebase 設定（與 index.html 同一個專案） ==========
+    const FIREBASE_CONFIG = {
+        apiKey: "AIzaSyATCaOlYxkYTle1hPzYAcuXNlQHaAuO3-8",
+        authDomain: "case-scheduler-f752b.firebaseapp.com",
+        projectId: "case-scheduler-f752b",
+        storageBucket: "case-scheduler-f752b.firebasestorage.app",
+        messagingSenderId: "703006186929",
+        appId: "1:703006186929:web:57ac5b059678005455f190",
+        databaseURL: "https://case-scheduler-f752b-default-rtdb.firebaseio.com"
+    };
+
+    let currentUser = null;
+    let db = null;
+
+    // ========== 登入 / 登出 ==========
+    function showLoginError(err) {
+        const error = document.getElementById('login-error');
+        const info = document.getElementById('login-info');
+        console.error('登入失敗:', err);
+        let msg = err.message || err.code;
+        if (err.code === 'auth/invalid-credential' || err.code === 'auth/wrong-password' || err.code === 'auth/user-not-found') msg = '帳號或密碼錯誤';
+        else if (err.code === 'auth/too-many-requests') msg = '嘗試次數過多，請稍後再試';
+        else if (err.code === 'auth/network-request-failed') msg = '網路連線錯誤';
+        else if (err.code === 'auth/popup-closed-by-user') msg = '已取消登入';
+        error.textContent = msg;
+        error.style.display = 'block';
+        info.style.display = 'none';
+    }
+
+    async function loginWithEmailPassword() {
+        const emailInput = document.getElementById('email-input');
+        const passwordInput = document.getElementById('password-input');
+        const error = document.getElementById('login-error');
+        const info = document.getElementById('login-info');
+        const email = emailInput.value.trim();
+        const password = passwordInput.value;
+        if (!email || !password) {
+            error.textContent = '請輸入 Email 與密碼';
+            error.style.display = 'block';
+            return;
+        }
+        error.style.display = 'none';
+        info.textContent = '登入中...';
+        info.style.display = 'block';
+        try {
+            await firebase.auth().setPersistence(firebase.auth.Auth.Persistence.NONE);
+            await firebase.auth().signInWithEmailAndPassword(email, password);
+        } catch (err) {
+            showLoginError(err);
+            passwordInput.value = '';
+            passwordInput.focus();
+        }
+    }
+
+    async function loginWithGoogle() {
+        const error = document.getElementById('login-error');
+        const info = document.getElementById('login-info');
+        error.style.display = 'none';
+        info.textContent = '登入中...';
+        info.style.display = 'block';
+        try {
+            await firebase.auth().setPersistence(firebase.auth.Auth.Persistence.LOCAL);
+            const provider = new firebase.auth.GoogleAuthProvider();
+            await firebase.auth().signInWithPopup(provider);
+        } catch (err) {
+            showLoginError(err);
+        }
+    }
+
+    async function logout() {
+        await firebase.auth().signOut();
+        location.reload();
+    }
+
+    // ========== Firebase 初始化 ==========
+    function initFirebase() {
+        if (!firebase.apps.length) {
+            firebase.initializeApp(FIREBASE_CONFIG);
+        }
+        db = firebase.database();
+        setStatus('connected', '已連線');
+    }
+
+    function setStatus(state, text) {
+        const dot = document.getElementById('status-dot');
+        const txt = document.getElementById('status-text');
+        dot.className = 'status-dot' + (state === 'connected' ? ' connected' : state === 'saving' ? ' saving' : '');
+        txt.textContent = text;
+    }
+
+    // ========== Tab 切換 ==========
+    function activateTab(panelId) {
+        document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.panel === panelId));
+        document.querySelectorAll('.panel').forEach(p => p.classList.toggle('active', p.id === panelId));
+    }
+
+    // ========== 啟動 ==========
+    document.addEventListener('DOMContentLoaded', () => {
+        initFirebase();
+
+        // 監聽登入狀態
+        firebase.auth().onAuthStateChanged((user) => {
+            if (user) {
+                currentUser = user;
+                document.getElementById('login-screen').style.display = 'none';
+                document.getElementById('main-app').classList.remove('hidden');
+                const provider = user.providerData[0]?.providerId || 'unknown';
+                const providerIcon = provider === 'google.com' ? 'G' : (provider === 'password' ? 'E' : '?');
+                const shortName = (user.email || '').split('@')[0] || user.uid.substring(0, 6);
+                const userInfo = document.getElementById('user-info');
+                if (userInfo) {
+                    userInfo.textContent = `${providerIcon}:${shortName}`;
+                    userInfo.title = `${provider} | ${user.email || user.uid}`;
+                }
+                console.log('已登入:', user.email, '| UID:', user.uid);
+                onUserReady();
+            } else {
+                currentUser = null;
+                document.getElementById('login-screen').style.display = 'flex';
+                document.getElementById('main-app').classList.add('hidden');
+            }
+        });
+
+        // 登入按鈕
+        document.getElementById('login-btn').addEventListener('click', loginWithEmailPassword);
+        document.getElementById('google-login-btn').addEventListener('click', loginWithGoogle);
+        document.getElementById('logout-btn').addEventListener('click', () => {
+            if (confirm('確定要登出嗎？')) logout();
+        });
+        const submitOnEnter = (e) => { if (e.key === 'Enter') loginWithEmailPassword(); };
+        document.getElementById('email-input').addEventListener('keydown', submitOnEnter);
+        document.getElementById('password-input').addEventListener('keydown', submitOnEnter);
+
+        // Tab
+        document.querySelectorAll('.tab').forEach(t => {
+            t.addEventListener('click', () => activateTab(t.dataset.panel));
+        });
+
+        // 搜尋切換
+        document.getElementById('search-toggle-btn').addEventListener('click', () => {
+            const inp = document.getElementById('search-input');
+            inp.classList.toggle('show');
+            if (inp.classList.contains('show')) inp.focus();
+            else inp.value = '';
+        });
+    });
+
+    // ========== 登入後初始化（之後填內容） ==========
+    function onUserReady() {
+        // TODO: 載入門診日清單、病人主表、tag 等
+        console.log('User ready, OPD modules will load here.');
+    }
+</script>
+</body>
+</html>
