@@ -884,6 +884,27 @@
             body.mobile-readonly #logout-btn { padding: 6px 8px; }
             body.mobile-readonly #goto-opd-btn .btn-text { display: none; }
             body.mobile-readonly #goto-opd-btn { padding: 6px 8px; }
+
+            /* 標題只顯示 emoji */
+            body.mobile-readonly header h1 { font-size: 1.1rem; }
+            body.mobile-readonly header h1 .h1-text { display: none; }
+            /* 匯出按鈕、storage status 文字只顯示縮寫 / icon */
+            body.mobile-readonly #export-btn { padding: 6px 10px; font-size: 0.85rem; }
+            body.mobile-readonly #export-btn .btn-text { display: none; }
+            body.mobile-readonly .storage-status #storage-text { display: none; }
+            /* 編輯切換 banner 縮小 */
+            body.mobile-readonly .mobile-edit-toggle {
+                padding: 6px 10px;
+                margin-bottom: 6px;
+            }
+            body.mobile-readonly .mobile-edit-toggle span { font-size: 0.78rem; }
+            body.mobile-readonly .mobile-edit-toggle button {
+                padding: 5px 10px;
+                font-size: 0.78rem;
+            }
+            /* header 整體擠在一起，間距縮小 */
+            body.mobile-readonly header { gap: 8px !important; margin-bottom: 8px; }
+            body.mobile-readonly header > div { gap: 6px !important; }
             body.mobile-readonly .type-popup { display: none !important; }
             
             /* 手機版編輯模式：顯示新增按鈕，但保持隱藏刪除/編輯 */
@@ -995,11 +1016,11 @@
             <button id="mobile-edit-btn">✏️ 開啟編輯</button>
         </div>
         <header>
-            <h1>📋 案例排程表</h1>
+            <h1>📋<span class="h1-text"> 案例排程表</span></h1>
             <div style="display: flex; align-items: center; gap: 12px;">
                 <a href="opd.html" id="goto-opd-btn" style="padding: 6px 12px; background: var(--bg-tertiary); border: 1px solid var(--border); color: var(--text-primary); border-radius: 5px; font-family: inherit; font-size: 0.8rem; text-decoration: none; display: inline-flex; align-items: center; gap: 4px;" title="切換到 OPD 系統">🩺<span class="btn-text"> OPD</span></a>
                 <button id="reading-list-btn" style="padding: 6px 12px; background: var(--color-mri); border: none; color: white; border-radius: 5px; cursor: pointer; font-family: inherit; font-size: 0.8rem;">📖</button>
-                <button id="export-btn" style="padding: 6px 12px; background: var(--color-stame); border: none; color: white; border-radius: 5px; cursor: pointer; font-family: inherit; font-size: 0.8rem;">📄 匯出</button>
+                <button id="export-btn" style="padding: 6px 12px; background: var(--color-stame); border: none; color: white; border-radius: 5px; cursor: pointer; font-family: inherit; font-size: 0.8rem;">📄<span class="btn-text"> 匯出</span></button>
                 <button id="sync-btn" style="padding: 6px 12px; background: var(--bg-tertiary); border: 1px solid var(--border); color: var(--text-secondary); border-radius: 5px; cursor: pointer; font-family: inherit; font-size: 0.8rem;">🔄 同步</button>
                 <span class="storage-status">
                     <span class="storage-dot" id="storage-dot"></span>
@@ -1262,6 +1283,12 @@
             }
         }
 
+        // 偵測是否為 PWA / standalone 模式（iOS 加到主畫面、Android 安裝為 PWA）
+        function isStandaloneMode() {
+            return window.matchMedia('(display-mode: standalone)').matches
+                || window.navigator.standalone === true;
+        }
+
         // Google：持久登入（適合自己電腦/家裡）
         async function loginWithGoogle() {
             const error = document.getElementById('login-error');
@@ -1271,10 +1298,15 @@
             info.style.display = 'block';
 
             try {
-                // LOCAL：關瀏覽器重開仍保持登入，直到主動登出
                 await firebase.auth().setPersistence(firebase.auth.Auth.Persistence.LOCAL);
                 const provider = new firebase.auth.GoogleAuthProvider();
-                await firebase.auth().signInWithPopup(provider);
+                if (isStandaloneMode()) {
+                    // PWA / 加到主畫面模式：用 redirect 避免 popup 回不來
+                    await firebase.auth().signInWithRedirect(provider);
+                } else {
+                    // 一般瀏覽器：用 popup 較流暢
+                    await firebase.auth().signInWithPopup(provider);
+                }
             } catch (err) {
                 showLoginError(err);
             }
@@ -1297,6 +1329,13 @@
             if (!firebase.apps.length) {
                 firebase.initializeApp(FIREBASE_CONFIG);
             }
+
+            // 處理 redirect 回傳（PWA / standalone 模式 Google 登入用）
+            firebase.auth().getRedirectResult().catch((err) => {
+                if (err.code !== 'auth/no-auth-event') {
+                    showLoginError(err);
+                }
+            });
 
             // 監聽登入狀態
             firebase.auth().onAuthStateChanged((user) => {
