@@ -925,9 +925,13 @@
                 flex-shrink: 0;
                 padding: 6px 10px;
                 font-size: 0.78rem;
+                white-space: nowrap;
             }
             body.mobile-readonly .add-tab,
-            body.mobile-readonly .old-tabs-btn { flex-shrink: 0; }
+            body.mobile-readonly .old-tabs-btn {
+                flex-shrink: 0;
+                white-space: nowrap;
+            }
             body.mobile-readonly .type-popup { display: none !important; }
             
             /* 手機版編輯模式：顯示新增按鈕，但保持隱藏刪除/編輯 */
@@ -1725,8 +1729,12 @@
                 });
                 
                 oldTabsWrapper.appendChild(oldTabsBtn);
-                oldTabsWrapper.appendChild(dropdown);
                 container.appendChild(oldTabsWrapper);
+
+                // 下拉選單附到 body，避免 tabs-container 的 overflow 影響 fixed 定位（iOS Safari bug）
+                const oldDropdown = document.getElementById('old-tabs-dropdown');
+                if (oldDropdown) oldDropdown.remove();
+                document.body.appendChild(dropdown);
             }
         }
 
