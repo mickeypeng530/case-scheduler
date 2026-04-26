@@ -426,9 +426,26 @@
             line-height: 1.2;
         }
         .col-plan { position: relative; }
-        .plan-line.done { color: #86efac; }    /* * 開頭已完成 */
-        .plan-line.plan { color: var(--text-secondary); }   /* - 開頭計畫中 */
+        .plan-line.done { color: #86efac; }
+        .plan-line.plan { color: var(--text-secondary); }
         .plan-line.rtc-line { color: #93c5fd; font-weight: 500; }
+
+        /* Inline badge inside plan body — 由 [X] 渲染 */
+        .inline-badge {
+            display: inline-block;
+            padding: 0 4px;
+            border-radius: 3px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            margin: 0 2px;
+            line-height: 1.4;
+        }
+        .inline-badge.ib-done { background: rgba(253,230,138,0.85); color: #78350f; }
+        .inline-badge.ib-pending { background: rgba(251,207,232,0.85); color: #831843; }
+        .inline-badge.ib-pm { background: rgba(191,219,254,0.85); color: #1e3a8a; }
+        .inline-badge.ib-am { background: rgba(199,210,254,0.85); color: #3730a3; }
+        .inline-badge.ib-appt { background: rgba(251,146,60,0.85); color: #7c2d12; }
+        .inline-badge.ib-gray { background: rgba(148,163,184,0.5); color: var(--text-primary); }
 
         /* Tag chips in row */
         .visit-tags {
@@ -1188,6 +1205,17 @@
         <div class="field">
             <label>Plan（本次 visit）</label>
             <textarea id="v-plan" style="min-height: 140px; font-family: 'Noto Sans TC', monospace;"></textarea>
+            <div style="margin-top: 4px; display: flex; gap: 4px; flex-wrap: wrap; align-items: center;">
+                <span style="font-size: 0.74rem; color: var(--text-muted);">點插入到游標位置：</span>
+                <button type="button" data-insert="[待]" class="plan-insert-btn" style="background: rgba(251,207,232,0.3); color: #fbcfe8; border: 1px solid rgba(251,207,232,0.5); padding: 1px 8px; border-radius: 4px; font-family: inherit; font-size: 0.74rem; cursor: pointer;">[待]</button>
+                <button type="button" data-insert="[已]" class="plan-insert-btn" style="background: rgba(253,230,138,0.3); color: #fde68a; border: 1px solid rgba(253,230,138,0.5); padding: 1px 8px; border-radius: 4px; font-family: inherit; font-size: 0.74rem; cursor: pointer;">[已]</button>
+                <button type="button" data-insert="[PM]" class="plan-insert-btn" style="background: rgba(191,219,254,0.3); color: #bfdbfe; border: 1px solid rgba(191,219,254,0.5); padding: 1px 8px; border-radius: 4px; font-family: inherit; font-size: 0.74rem; cursor: pointer;">[PM]</button>
+                <button type="button" data-insert="[AM]" class="plan-insert-btn" style="background: rgba(199,210,254,0.3); color: #c7d2fe; border: 1px solid rgba(199,210,254,0.5); padding: 1px 8px; border-radius: 4px; font-family: inherit; font-size: 0.74rem; cursor: pointer;">[AM]</button>
+                <button type="button" data-insert="[約]" class="plan-insert-btn" style="background: rgba(251,146,60,0.3); color: #fdba74; border: 1px solid rgba(251,146,60,0.5); padding: 1px 8px; border-radius: 4px; font-family: inherit; font-size: 0.74rem; cursor: pointer;">[約]</button>
+                <span style="border-left: 1px solid var(--border); height: 14px; margin: 0 2px;"></span>
+                <button type="button" data-insert="[鬆 已]" class="plan-insert-btn" style="background: rgba(168,85,247,0.25); color: #d8b4fe; border: 1px solid rgba(168,85,247,0.5); padding: 1px 8px; border-radius: 4px; font-family: inherit; font-size: 0.74rem; cursor: pointer;">[鬆 已]</button>
+                <button type="button" data-insert="[鬆 待]" class="plan-insert-btn" style="background: rgba(168,85,247,0.25); color: #d8b4fe; border: 1px solid rgba(168,85,247,0.5); padding: 1px 8px; border-radius: 4px; font-family: inherit; font-size: 0.74rem; cursor: pointer;">[鬆 待]</button>
+            </div>
         </div>
         <div class="actions">
             <button id="v-modal-delete" class="danger" style="display: none;">刪除</button>
@@ -1989,12 +2017,29 @@
 
     function highlightPlanLine(line) {
         const trimmed = line.trim();
-        if (!trimmed) return '';  // 空行直接 skip
+        if (!trimmed) return '';
         let cls = '';
         if (trimmed.startsWith('*')) cls = 'plan-line done';
         else if (trimmed.startsWith('-')) cls = 'plan-line plan';
         else if (/RTC/i.test(trimmed)) cls = 'plan-line rtc-line';
-        return `<span class="${cls}">${escapeHtml(trimmed)}</span>`;
+        // 把 [X] inline badge 渲染（只匹配方括號內單行短文字，避免抓到大段）
+        const escaped = escapeHtml(trimmed);
+        const withBadges = escaped.replace(/\[([^\]\n]{1,12})\]/g, (_, content) => {
+            const c = content.trim();
+            let badgeColor = 'gray';
+            if (/^已|done/i.test(c)) badgeColor = 'done';
+            else if (/^待|pending/i.test(c)) badgeColor = 'pending';
+            else if (/^PM/i.test(c)) badgeColor = 'pm';
+            else if (/^AM/i.test(c)) badgeColor = 'am';
+            else if (/^約|appt/i.test(c)) badgeColor = 'appt';
+            else if (/已$|done$/i.test(c)) badgeColor = 'done';
+            else if (/待$|pending$/i.test(c)) badgeColor = 'pending';
+            else if (/PM$/i.test(c)) badgeColor = 'pm';
+            else if (/AM$/i.test(c)) badgeColor = 'am';
+            else if (/約$/i.test(c)) badgeColor = 'appt';
+            return `<span class="inline-badge ib-${badgeColor}">${escapeHtml(c)}</span>`;
+        });
+        return `<span class="${cls}">${withBadges}</span>`;
     }
 
     // ========== Visit table 渲染 ==========
@@ -2660,6 +2705,25 @@
         });
         document.getElementById('v-generate-pain').addEventListener('click', () => {
             fillSummaryField('v-pain-summary', generateSummaryByCategory(PAIN_PROCS));
+        });
+
+        // 插入 status tag 到 plan textarea 游標位置
+        document.querySelectorAll('.plan-insert-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const ta = document.getElementById('v-plan');
+                const text = btn.dataset.insert;
+                const start = ta.selectionStart;
+                const end = ta.selectionEnd;
+                const before = ta.value.substring(0, start);
+                const after = ta.value.substring(end);
+                // 自動補空白：游標前不是空白且不是行首 → 加一個空白
+                const needSpace = before.length > 0 && !/[\s\n]$/.test(before);
+                const insertText = (needSpace ? ' ' : '') + text;
+                ta.value = before + insertText + after;
+                const cursorPos = start + insertText.length;
+                ta.selectionStart = ta.selectionEnd = cursorPos;
+                ta.focus();
+            });
         });
 
         // Tag picker（單純多選）
