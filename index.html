@@ -1327,12 +1327,19 @@
             try {
                 await firebase.auth().setPersistence(firebase.auth.Auth.Persistence.LOCAL);
                 const provider = new firebase.auth.GoogleAuthProvider();
-                if (isStandaloneMode()) {
-                    // PWA / 加到主畫面模式：用 redirect 避免 popup 回不來
-                    await firebase.auth().signInWithRedirect(provider);
-                } else {
-                    // 一般瀏覽器：用 popup 較流暢
+                // 先試 popup（最可靠）。若 PWA standalone 失敗 → fallback 用 redirect
+                try {
                     await firebase.auth().signInWithPopup(provider);
+                } catch (popupErr) {
+                    console.warn('Popup failed, falling back to redirect:', popupErr.code);
+                    if (popupErr.code === 'auth/popup-blocked'
+                        || popupErr.code === 'auth/popup-closed-by-user'
+                        || popupErr.code === 'auth/cancelled-popup-request'
+                        || popupErr.code === 'auth/operation-not-supported-in-this-environment') {
+                        await firebase.auth().signInWithRedirect(provider);
+                    } else {
+                        throw popupErr;
+                    }
                 }
             } catch (err) {
                 showLoginError(err);
