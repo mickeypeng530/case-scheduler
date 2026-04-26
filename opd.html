@@ -484,14 +484,18 @@
             cursor: help;
             position: relative;
             overflow: visible;
+            display: inline-block !important;  /* 覆蓋 .pill 的 inline-flex */
+            max-width: 240px;
+            vertical-align: middle;
         }
         .pill.expandable > .pill-text {
             display: inline-block;
-            max-width: 220px;
+            max-width: 100%;
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
             vertical-align: bottom;
+            min-width: 0;
         }
         .pill.expandable:hover::after {
             content: attr(data-full);
@@ -2048,7 +2052,8 @@
                 <td class="col-labs">${escapeHtml(labsDisplay)}</td>
                 <td class="col-extra">${(() => {
                     const bs = p.boneScore || '';
-                    const ph = p.pastHistory || p.extra || '';
+                    // pastHistory 用 ?? 避免「空字串」還 fallback 到 extra（user 主動清空時尊重）
+                    const ph = (p.pastHistory ?? p.extra) || '';
                     const parts = [];
                     if (bs) parts.push(`<span style="color:#c084fc;font-weight:600;font-size:0.72rem">骨鬆:</span> ${escapeHtml(bs)}`);
                     if (ph) parts.push(`<span style="color:#fda4af;font-weight:600;font-size:0.72rem">PH:</span> ${escapeHtml(ph)}`);
@@ -2442,8 +2447,8 @@
         }
         document.getElementById('v-labs').value = labsValue;
         document.getElementById('v-bone-score').value = patient.boneScore || '';
-        // pastHistory 取代 extra；舊資料 fallback 從 extra 帶
-        document.getElementById('v-past-history').value = patient.pastHistory || patient.extra || '';
+        // pastHistory 取代 extra；用 ?? 只在 undefined 才 fallback（避免清空後重生）
+        document.getElementById('v-past-history').value = (patient.pastHistory ?? patient.extra) || '';
 
         // 抗凝劑 state 載入
         const acState = patient.anticoagState || (patient.anticoagulants && patient.anticoagulants.length ? 'yes' : 'unknown');
@@ -2543,6 +2548,7 @@
             labs: document.getElementById('v-labs').value.trim(),
             boneScore: document.getElementById('v-bone-score').value.trim(),
             pastHistory: document.getElementById('v-past-history').value.trim(),
+            extra: '',  // legacy field 清空（避免重生）
             anticoagState: acState,
             anticoagulants,
             bonePlanSummary: document.getElementById('v-bone-summary').value.trim(),
