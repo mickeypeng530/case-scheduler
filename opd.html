@@ -484,18 +484,23 @@
             cursor: help;
             position: relative;
             overflow: visible;
-            display: inline-block !important;  /* 覆蓋 .pill 的 inline-flex */
-            max-width: 240px;
+            display: inline-block !important;
+            max-width: 100%;
+            min-width: 0;
+            box-sizing: border-box;
             vertical-align: middle;
         }
         .pill.expandable > .pill-text {
-            display: inline-block;
+            display: block;
             max-width: 100%;
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
-            vertical-align: bottom;
             min-width: 0;
+        }
+        /* 本次概況欄 chip 容器 */
+        .exam-summary {
+            max-width: 100%;
         }
         .pill.expandable:hover::after {
             content: attr(data-full);
