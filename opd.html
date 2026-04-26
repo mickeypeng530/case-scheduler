@@ -393,7 +393,28 @@
         .visit-tags .tag-chip[data-tag="PRP"] { background: #ec4899; }
         .visit-tags .tag-chip[data-tag="follow up"] { background: #64748b; }
         .visit-tags .tag-chip[data-tag="med"] { background: #f97316; }
-        .visit-tags .tag-chip[data-tag*=""] { /* fallback */ }
+
+        /* Procedure status overlay：覆蓋背景色 */
+        .tag-chip[data-status="pending"] { background: #fbcfe8 !important; color: #831843 !important; }
+        .tag-chip[data-status="done"] { background: #fde68a !important; color: #78350f !important; }
+        .tag-chip[data-status="pm"] { background: #bfdbfe !important; color: #1e3a8a !important; }
+        .tag-chip[data-status="am"] { background: #c7d2fe !important; color: #3730a3 !important; }
+        .tag-chip .status-flag {
+            display: inline-block;
+            font-size: 0.65rem;
+            font-weight: 700;
+            margin-left: 3px;
+            padding: 0 3px;
+            border-radius: 3px;
+            background: rgba(0,0,0,0.18);
+        }
+        /* Procedure 摘要區（plan column 最上方）*/
+        .proc-status-bar {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px;
+            margin-bottom: 4px;
+        }
 
         /* Status badges */
         .status-badges {
@@ -634,35 +655,35 @@
             color: var(--text-primary);
         }
         .modal .field {
-            margin-bottom: 12px;
+            margin-bottom: 6px;
         }
         .modal .field label {
             display: block;
-            font-size: 0.85rem;
+            font-size: 0.82rem;
             color: var(--text-secondary);
-            margin-bottom: 4px;
+            margin-bottom: 2px;
         }
         .modal .field input, .modal .field textarea {
             width: 100%;
-            padding: 8px 12px;
+            padding: 6px 10px;
             background: var(--bg-primary);
             border: 1px solid var(--border);
             color: var(--text-primary);
             border-radius: 6px;
             font-family: inherit;
-            font-size: 0.95rem;
+            font-size: 0.9rem;
         }
-        .modal .field textarea { resize: vertical; min-height: 60px; }
+        .modal .field textarea { resize: vertical; min-height: 50px; }
         .modal .field-row {
             display: grid;
             grid-template-columns: 1fr 1fr;
-            gap: 10px;
+            gap: 8px;
         }
         .modal .actions {
             display: flex;
             gap: 8px;
             justify-content: flex-end;
-            margin-top: 18px;
+            margin-top: 12px;
         }
         .modal .actions button {
             padding: 8px 16px;
@@ -945,9 +966,12 @@
         </div>
         <div class="field">
             <label>本次標籤（多選）</label>
-            <div class="visit-tags" id="v-tag-picker" style="gap: 6px;">
-                <!-- 8 個預設 tag toggle 動態產生 -->
-            </div>
+            <div class="visit-tags" id="v-tag-picker" style="gap: 6px;"></div>
+        </div>
+        <div class="field">
+            <label>本次處置狀態（顯示於 Plan 上方）</label>
+            <div class="visit-tags" id="v-proc-picker" style="gap: 6px;"></div>
+            <div style="margin-top: 4px; font-size: 0.7rem; color: var(--text-muted);">點處置切換狀態：無→待→已→PM→AM→無</div>
         </div>
         <div class="field">
             <label>Exam &amp; Education（本次 visit）</label>
@@ -1491,6 +1515,13 @@
                 <td class="col-extra">${escapeHtml(p.extra || '')}</td>
                 <td class="col-exam">${escapeHtml(v.examEducation || '')}</td>
                 <td class="col-plan">
+                    ${(() => {
+                        const procEntries = Object.entries(v.procedureStatuses || {}).filter(([_, s]) => s);
+                        if (!procEntries.length) return '';
+                        return `<div class="proc-status-bar">${procEntries.map(([p, s]) =>
+                            `<span class="tag-chip" data-status="${s}">${escapeHtml(p)}<span class="status-flag">${STATUS_LABEL[s] || s}</span></span>`
+                        ).join('')}</div>`;
+                    })()}
                     <div class="plan-summary">${summaryPills || '<span style="color:var(--text-muted)">（plan 尚未填）</span>'}</div>
                     <div class="plan-body">${showLines.map(highlightPlanLine).filter(Boolean).join('<br>')}${hasMore ? `<br><span class="more-toggle" data-record="${escapeAttr(v.recordNumber)}">▼ 顯示全部 ${planLines.length} 行</span>` : (state.expandedPlans?.has(v.recordNumber) && planLines.length > 7 ? `<br><span class="more-toggle" data-record="${escapeAttr(v.recordNumber)}">▲ 收合</span>` : '')}</div>
                 </td>
@@ -1736,6 +1767,20 @@
 
     // ========== Visit modal ==========
     const DEFAULT_TAGS = ['鬆', 'CT NB', 'SONO', 'TAME', 'MRI', 'PRP', 'follow up', 'med'];
+    const DEFAULT_PROCEDURES = ['CT NB', 'MRI', 'SONO', 'TAME', '鬆', 'pRF', 'PRP'];
+    const STATUS_CYCLE = [undefined, 'pending', 'done', 'pm', 'am'];
+    const STATUS_LABEL = { pending: '待', done: '已', pm: 'PM', am: 'AM' };
+
+    function renderProcedurePicker(statuses) {
+        const wrap = document.getElementById('v-proc-picker');
+        if (!wrap) return;
+        wrap.innerHTML = DEFAULT_PROCEDURES.map(p => {
+            const status = statuses?.[p];
+            const flag = status ? `<span class="status-flag">${STATUS_LABEL[status] || status}</span>` : '';
+            const styleOff = status ? '' : `background:transparent !important; color:var(--text-secondary) !important; border:1px dashed var(--border);`;
+            return `<span class="tag-chip" data-proc="${escapeAttr(p)}" data-status="${status || ''}" style="cursor:pointer; ${styleOff}">${escapeHtml(p)}${flag}</span>`;
+        }).join('');
+    }
 
     function renderVisitTagPicker(selected) {
         const wrap = document.getElementById('v-tag-picker');
@@ -1756,6 +1801,7 @@
 
         state.editingVisitRecord = isEdit ? recordNumber : null;
         state.visitTagsTemp = [...(visit.tags || [])];
+        state.procStatusesTemp = { ...(visit.procedureStatuses || {}) };
 
         document.getElementById('visit-modal-title').textContent = isEdit ? `編輯病人（${formatDateLabel(date)}）` : `新增本日病人（${formatDateLabel(date)}）`;
         document.getElementById('v-order').value = visit.orderInClinic || '';
@@ -1781,6 +1827,7 @@
         document.getElementById('v-modal-delete').style.display = isEdit ? 'inline-block' : 'none';
 
         renderVisitTagPicker(state.visitTagsTemp);
+        renderProcedurePicker(state.procStatusesTemp);
 
         document.getElementById('visit-paste-input').value = '';
         document.getElementById('visit-paste-status').textContent = '';
@@ -1792,6 +1839,7 @@
         document.getElementById('visit-modal').classList.remove('show');
         state.editingVisitRecord = null;
         state.visitTagsTemp = [];
+        state.procStatusesTemp = {};
     }
 
     // 病歷號 input 失焦或變更 → 自動帶舊資料
@@ -1831,6 +1879,10 @@
             await deleteVisit(date, original);
         }
 
+        // 過濾 procedureStatuses 只留有狀態的
+        const cleanedProcStatuses = {};
+        Object.entries(state.procStatusesTemp || {}).forEach(([k, v]) => { if (v) cleanedProcStatuses[k] = v; });
+
         const visit = {
             recordNumber,
             date,
@@ -1838,6 +1890,7 @@
             examEducation: document.getElementById('v-exam').value.trim(),
             plan: document.getElementById('v-plan').value.trim(),
             tags: [...state.visitTagsTemp],
+            procedureStatuses: cleanedProcStatuses,
             status: ((state.visitsByDate?.[date] || {})[recordNumber]?.status) || 'draft',
             noShow: ((state.visitsByDate?.[date] || {})[recordNumber]?.noShow) || false
         };
@@ -1886,7 +1939,7 @@
         // 病歷號失焦自動帶資料
         document.getElementById('v-record-number').addEventListener('blur', autoFillFromPatientLookup);
 
-        // Tag picker
+        // Tag picker（單純多選）
         document.getElementById('v-tag-picker').addEventListener('click', (e) => {
             const chip = e.target.closest('.tag-chip');
             if (!chip) return;
@@ -1895,6 +1948,19 @@
             if (idx >= 0) state.visitTagsTemp.splice(idx, 1);
             else state.visitTagsTemp.push(tag);
             renderVisitTagPicker(state.visitTagsTemp);
+        });
+
+        // Procedure status picker（點循環狀態）
+        document.getElementById('v-proc-picker').addEventListener('click', (e) => {
+            const chip = e.target.closest('.tag-chip');
+            if (!chip) return;
+            const proc = chip.dataset.proc;
+            const cur = state.procStatusesTemp[proc];
+            const idx = STATUS_CYCLE.indexOf(cur);
+            const next = STATUS_CYCLE[(idx + 1) % STATUS_CYCLE.length];
+            if (next) state.procStatusesTemp[proc] = next;
+            else delete state.procStatusesTemp[proc];
+            renderProcedurePicker(state.procStatusesTemp);
         });
 
         // Paste 解析
