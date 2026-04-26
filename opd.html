@@ -477,7 +477,7 @@
         .inline-badge.ib-mriyi { background: rgba(196,181,253,0.85); color: #4c1d95; }       /* MRI已 紫 */
         .inline-badge.ib-ctnbyi { background: rgba(251,146,60,0.85); color: #7c2d12; }       /* CT NB已 橘 */
         .inline-badge.ib-sonopm { background: rgba(96,165,250,0.85); color: #1e3a8a; }       /* SONO PM 淺藍 */
-        .inline-badge.ib-sonoyue { background: rgba(30,64,175,0.85); color: #dbeafe; }       /* SONO 約 深藍 */
+        .inline-badge.ib-sonoyue { background: rgba(59,130,246,0.9); color: #ffffff; }        /* SONO 約 亮藍 */
         /* 本次 anchor — 醒目 */
         .inline-badge.ib-anchor {
             background: rgba(99,102,241,0.7);
@@ -674,19 +674,20 @@
         }
         .header-notes .hn-title {
             display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 3px;
+            align-items: baseline;
+            gap: 8px;
             color: var(--text-secondary);
             font-weight: 500;
             font-size: 0.78rem;
         }
+        .header-notes .hn-label { flex: 0 0 auto; }
         .header-notes .hn-content {
+            flex: 1 1 auto;
             white-space: pre-wrap;
             color: var(--text-primary);
             font-family: 'Noto Sans TC', monospace;
             font-size: 0.82rem;
-            line-height: 1.55;
+            line-height: 1.45;
         }
         .header-notes .hn-edit {
             padding: 4px 10px;
@@ -1250,7 +1251,7 @@
                 <button type="button" data-insert="[MRI 已]" class="plan-insert-btn" style="background: rgba(196,181,253,0.6); color: #4c1d95; border: none; padding: 1px 7px; border-radius: 3px; font-family: inherit; font-size: 0.74rem; cursor: pointer;">[MRI 已]</button>
                 <button type="button" data-insert="[MRI 待]" class="plan-insert-btn" style="background: rgba(251,207,232,0.4); color: #831843; border: none; padding: 1px 7px; border-radius: 3px; font-family: inherit; font-size: 0.74rem; cursor: pointer;">[MRI 待]</button>
                 <button type="button" data-insert="[SONO PM]" class="plan-insert-btn" style="background: rgba(96,165,250,0.5); color: #1e3a8a; border: none; padding: 1px 7px; border-radius: 3px; font-family: inherit; font-size: 0.74rem; cursor: pointer;">[SONO PM]</button>
-                <button type="button" data-insert="[SONO 約]" class="plan-insert-btn" style="background: rgba(30,64,175,0.6); color: #dbeafe; border: none; padding: 1px 7px; border-radius: 3px; font-family: inherit; font-size: 0.74rem; cursor: pointer;">[SONO 約]</button>
+                <button type="button" data-insert="[SONO 約]" class="plan-insert-btn" style="background: rgba(59,130,246,0.7); color: #ffffff; border: none; padding: 1px 7px; border-radius: 3px; font-family: inherit; font-size: 0.74rem; cursor: pointer;">[SONO 約]</button>
                 <button type="button" data-insert="[TAME 已]" class="plan-insert-btn" style="background: rgba(253,230,138,0.6); color: #78350f; border: none; padding: 1px 7px; border-radius: 3px; font-family: inherit; font-size: 0.74rem; cursor: pointer;">[TAME 已]</button>
                 <button type="button" data-insert="[TAME 待]" class="plan-insert-btn" style="background: rgba(251,207,232,0.4); color: #831843; border: none; padding: 1px 7px; border-radius: 3px; font-family: inherit; font-size: 0.74rem; cursor: pointer;">[TAME 待]</button>
             </div>
@@ -1282,34 +1283,27 @@
 </div>
 
 <script type="module">
-    // ========== Firebase 設定（與 index.html 同一個專案） ==========
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+    // ========== Firebase ==========
+    import { fbAuth, fbDb } from "./firebase-init.js";
     import {
-        getAuth, GoogleAuthProvider,
-        signInWithPopup, signInWithRedirect, signInWithEmailAndPassword,
-        getRedirectResult, onAuthStateChanged, signOut,
-        setPersistence, browserLocalPersistence, inMemoryPersistence
+        GoogleAuthProvider,
+        signInWithPopup, signInWithEmailAndPassword,
+        onAuthStateChanged, signOut,
+        setPersistence, inMemoryPersistence
     } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
     import {
-        getDatabase, ref, set, get, update, remove, onValue, off
+        ref, set, get, update, remove, onValue
     } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
 
-    const FIREBASE_CONFIG = {
-        apiKey: "AIzaSyATCaOlYxkYTle1hPzYAcuXNlQHaAuO3-8",
-        authDomain: "case-scheduler-f752b.firebaseapp.com",
-        projectId: "case-scheduler-f752b",
-        storageBucket: "case-scheduler-f752b.firebasestorage.app",
-        messagingSenderId: "703006186929",
-        appId: "1:703006186929:web:57ac5b059678005455f190",
-        databaseURL: "https://case-scheduler-f752b-default-rtdb.firebaseio.com"
-    };
-
-    const fbApp = initializeApp(FIREBASE_CONFIG);
-    const fbAuth = getAuth(fbApp);
-    const fbDb = getDatabase(fbApp);
-
     let currentUser = null;
-    let db = fbDb;  // 保留 db 變數名以減少改動範圍
+
+    // ========== 共用 utilities ==========
+    function escapeHtml(s) {
+        return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    }
+    function escapeAttr(s) {
+        return String(s ?? '').replace(/"/g, '&quot;');
+    }
 
     // ========== 登入 / 登出 ==========
     function showLoginError(err) {
@@ -1375,9 +1369,7 @@
         location.reload();
     }
 
-    // ========== Firebase 初始化 ==========
     function initFirebase() {
-        // app/db 已在 module 頂部初始化；此處保留為相容呼叫點
         setStatus('connected', '已連線');
     }
 
@@ -1810,7 +1802,7 @@
 
     // ========== 加診日 Firebase ==========
     function loadAdHocClinicDates() {
-        if (!db) return;
+        if (!fbDb) return;
         onValue(ref(fbDb, 'opd/clinicDates'), (snap) => {
             state.adHocClinicDates = snap.val() || {};
             renderClinicDateSelector();
@@ -1900,7 +1892,7 @@
     }
 
     function loadVisitsForDate(dateStr) {
-        if (!db) return;
+        if (!fbDb) return;
         const r = ref(fbDb, 'opd/visits/' + dateStr);
         const unsub = onValue(r, (snap) => {
             state.visitsByDate = state.visitsByDate || {};
@@ -1912,7 +1904,7 @@
     }
 
     function loadClinicMetaForDate(dateStr) {
-        if (!db) return;
+        if (!fbDb) return;
         const r = ref(fbDb, 'opd/clinicMeta/' + dateStr);
         const unsub = onValue(r, (snap) => {
             state.clinicMetaByDate = state.clinicMetaByDate || {};
@@ -2139,7 +2131,7 @@
             <div class="stats-bar">
                 <span>👤 <span class="stat-num">${came.length}</span> 人${dc.length ? `<span style="color:var(--color-dc);"> + DC ${dc.length}</span>` : ''}</span>
                 <span class="stat-divider"></span>
-                <span>備齊 <span class="stat-num">${prepared}</span> / 確認 <span class="stat-num">${confirmed}</span></span>
+                <span>已準備 <span class="stat-num">${prepared}</span> / 確認 <span class="stat-num">${confirmed}</span></span>
                 ${tagPills ? `<span class="stat-divider"></span><span class="stat-tags visit-tags">${tagPills}</span>` : ''}
             </div>
         `;
@@ -2333,10 +2325,11 @@
             };
         } else {
             wrap.innerHTML = `
-              <div class="hn-title">📌 標頭備註
+              <div class="hn-title">
+                <span class="hn-label">📌 標頭備註</span>
+                <span class="hn-content">${notes ? escapeHtml(notes) : '<span style="color:var(--text-muted)">（尚未填寫）</span>'}</span>
                 <button class="hn-edit" id="hn-edit-btn">編輯</button>
               </div>
-              <div class="hn-content">${notes ? escapeHtml(notes) : '<span style="color:var(--text-muted)">（尚未填寫，點編輯加入這日的預約 CT NB / MRI 等）</span>'}</div>
             `;
             document.getElementById('hn-edit-btn').onclick = () => {
                 state.editingHeaderNotes = true;
@@ -2935,7 +2928,7 @@
 
     // ========== 病人主表 Firebase ==========
     function loadPatients() {
-        if (!db) return;
+        if (!fbDb) return;
         setStatus('saving', '載入中...');
         onValue(ref(fbDb, 'opd/patients'), (snap) => {
             state.patients = snap.val() || {};
@@ -3011,13 +3004,6 @@
                 </div>
             `;
         }).join('');
-    }
-
-    function escapeHtml(s) {
-        return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-    }
-    function escapeAttr(s) {
-        return String(s ?? '').replace(/"/g, '&quot;');
     }
 
     // ========== 病人 Modal ==========
