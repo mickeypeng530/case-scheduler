@@ -925,13 +925,9 @@
                 flex-shrink: 0;
                 padding: 6px 10px;
                 font-size: 0.78rem;
-                white-space: nowrap;
             }
             body.mobile-readonly .add-tab,
-            body.mobile-readonly .old-tabs-btn {
-                flex-shrink: 0;
-                white-space: nowrap;
-            }
+            body.mobile-readonly .old-tabs-btn { flex-shrink: 0; }
             body.mobile-readonly .type-popup { display: none !important; }
             
             /* 手機版編輯模式：顯示新增按鈕，但保持隱藏刪除/編輯 */
@@ -996,6 +992,10 @@
             }
         }
     </style>
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
     <!-- docx.js for Word export -->
     <script src="https://unpkg.com/docx@8.5.0/build/index.umd.js"></script>
 </head>
@@ -1241,18 +1241,7 @@
         </div>
     </div>
 
-    <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-        import {
-            getAuth, GoogleAuthProvider,
-            signInWithPopup, signInWithRedirect, signInWithEmailAndPassword,
-            getRedirectResult, onAuthStateChanged, signOut,
-            setPersistence, browserLocalPersistence, inMemoryPersistence
-        } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
-        import {
-            getDatabase, ref, set, get, update, remove, onValue, off
-        } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
-
+    <script>
         // ========== Firebase 設定 ==========
         const FIREBASE_CONFIG = {
             apiKey: "AIzaSyATCaOlYxkYTle1hPzYAcuXNlQHaAuO3-8",
@@ -1263,11 +1252,6 @@
             appId: "1:703006186929:web:57ac5b059678005455f190",
             databaseURL: "https://case-scheduler-f752b-default-rtdb.firebaseio.com"
         };
-
-        const fbApp = initializeApp(FIREBASE_CONFIG);
-        const fbAuth = getAuth(fbApp);
-        const fbDb = getDatabase(fbApp);
-        let db = fbDb;
 
         // ========== 登入 ==========
         let currentUser = null;
@@ -1313,8 +1297,8 @@
 
             try {
                 // NONE：關閉/重新整理頁面就登出，每次都要重輸（適合診間共用電腦）
-                await setPersistence(fbAuth, inMemoryPersistence);
-                await signInWithEmailAndPassword(fbAuth, email, password);
+                await firebase.auth().setPersistence(firebase.auth.Auth.Persistence.NONE);
+                await firebase.auth().signInWithEmailAndPassword(email, password);
             } catch (err) {
                 showLoginError(err);
                 passwordInput.value = '';
@@ -1337,21 +1321,14 @@
             info.style.display = 'block';
 
             try {
-                await setPersistence(fbAuth, browserLocalPersistence);
-                const provider = new GoogleAuthProvider();
-                // 先試 popup（最可靠）。若 PWA standalone 失敗 → fallback 用 redirect
-                try {
-                    await signInWithPopup(fbAuth, provider);
-                } catch (popupErr) {
-                    console.warn('Popup failed, falling back to redirect:', popupErr.code);
-                    if (popupErr.code === 'auth/popup-blocked'
-                        || popupErr.code === 'auth/popup-closed-by-user'
-                        || popupErr.code === 'auth/cancelled-popup-request'
-                        || popupErr.code === 'auth/operation-not-supported-in-this-environment') {
-                        await signInWithRedirect(fbAuth, provider);
-                    } else {
-                        throw popupErr;
-                    }
+                await firebase.auth().setPersistence(firebase.auth.Auth.Persistence.LOCAL);
+                const provider = new firebase.auth.GoogleAuthProvider();
+                if (isStandaloneMode()) {
+                    // PWA / 加到主畫面模式：用 redirect 避免 popup 回不來
+                    await firebase.auth().signInWithRedirect(provider);
+                } else {
+                    // 一般瀏覽器：用 popup 較流暢
+                    await firebase.auth().signInWithPopup(provider);
                 }
             } catch (err) {
                 showLoginError(err);
@@ -1359,7 +1336,7 @@
         }
 
         async function logout() {
-            await signOut(fbAuth);
+            await firebase.auth().signOut();
             location.reload();
         }
 
@@ -1371,15 +1348,20 @@
                 document.body.classList.add('mobile-readonly');
             }
 
+            // 初始化 Firebase（auth 需在登入前先 initializeApp）
+            if (!firebase.apps.length) {
+                firebase.initializeApp(FIREBASE_CONFIG);
+            }
+
             // 處理 redirect 回傳（PWA / standalone 模式 Google 登入用）
-            getRedirectResult(fbAuth).catch((err) => {
+            firebase.auth().getRedirectResult().catch((err) => {
                 if (err.code !== 'auth/no-auth-event') {
                     showLoginError(err);
                 }
             });
 
             // 監聽登入狀態
-            onAuthStateChanged(fbAuth, (user) => {
+            firebase.auth().onAuthStateChanged((user) => {
                 if (user) {
                     currentUser = user;
                     document.getElementById('login-screen').style.display = 'none';
@@ -1488,10 +1470,14 @@
         async function initFirebase() {
             try {
                 showStatus('連線中...', true);
+                if (!firebase.apps.length) {
+                    firebase.initializeApp(FIREBASE_CONFIG);
+                }
+                db = firebase.database();
                 firebaseReady = true;
-
+                
                 // 監聽雲端資料變化（即時同步）
-                onValue(ref(fbDb, 'scheduler'), (snapshot) => {
+                db.ref('scheduler').on('value', (snapshot) => {
                     const data = snapshot.val();
                     if (data) {
                         state.tabs = data.tabs || [];
@@ -1503,9 +1489,9 @@
                     }
                     showStatus('已同步', false);
                 });
-
+                
                 // 監聽閱讀清單
-                onValue(ref(fbDb, 'readings'), (snapshot) => {
+                db.ref('readings').on('value', (snapshot) => {
                     const data = snapshot.val();
                     readingList = data ? Object.values(data) : [];
                     readingList.sort((a, b) => b.createdAt - a.createdAt); // 最新的在前
@@ -1541,7 +1527,7 @@
             
             // 同步到 Firebase
             if (firebaseReady && db) {
-                set(ref(fbDb, 'scheduler'), {
+                db.ref('scheduler').set({
                     tabs: state.tabs,
                     activeTabId: state.activeTabId,
                     cellData: state.cellData,
@@ -1739,12 +1725,8 @@
                 });
                 
                 oldTabsWrapper.appendChild(oldTabsBtn);
+                oldTabsWrapper.appendChild(dropdown);
                 container.appendChild(oldTabsWrapper);
-
-                // 下拉選單附到 body，避免 tabs-container 的 overflow 影響 fixed 定位（iOS Safari bug）
-                const oldDropdown = document.getElementById('old-tabs-dropdown');
-                if (oldDropdown) oldDropdown.remove();
-                document.body.appendChild(dropdown);
             }
         }
 
@@ -2395,7 +2377,7 @@
             document.getElementById('sync-btn').addEventListener('click', async () => {
                 if (firebaseReady && db) {
                     showStatus('同步中...', true);
-                    const snapshot = await get(ref(fbDb, 'scheduler'));
+                    const snapshot = await db.ref('scheduler').get();
                     const data = snapshot.val();
                     if (data) {
                         state.tabs = data.tabs || [];
@@ -2465,24 +2447,7 @@
             
             // 點擊遮罩或其他地方關閉舊分頁下拉選單
             document.addEventListener('click', (e) => {
-                if (!e.target.closest('.old-tabs-wrapper') && !e.target.closest('.old-tabs-dropdown')) {
-                    hideOldTabsDropdown();
-                }
-            });
-
-            // 下拉選單已附到 body，事件需另外綁
-            document.addEventListener('click', (e) => {
-                const closeItem = e.target.closest('.old-tabs-dropdown .old-tab-close');
-                if (closeItem) {
-                    e.stopPropagation();
-                    state.tabToDelete = closeItem.dataset.tabId;
-                    document.getElementById('delete-tab-modal').classList.add('show');
-                    hideOldTabsDropdown();
-                    return;
-                }
-                const item = e.target.closest('.old-tabs-dropdown .old-tab-item');
-                if (item) {
-                    switchTab(item.dataset.tabId);
+                if (!e.target.closest('.old-tabs-wrapper')) {
                     hideOldTabsDropdown();
                 }
             });
@@ -3079,13 +3044,13 @@
             // 嘗試抓取網頁標題
             fetchPageTitle(url.trim()).then(title => {
                 if (title && firebaseReady) {
-                    set(ref(fbDb, 'readings/' + id + '/title'), title);
+                    db.ref('readings/' + id + '/title').set(title);
                 }
             });
-
+            
             // 儲存到 Firebase
             if (firebaseReady) {
-                await set(ref(fbDb, 'readings/' + id), item);
+                await db.ref('readings/' + id).set(item);
             } else {
                 readingList.unshift(item);
                 renderReadingList();
@@ -3107,7 +3072,7 @@
         
         async function deleteReadingItem(id) {
             if (firebaseReady) {
-                await remove(ref(fbDb, 'readings/' + id));
+                await db.ref('readings/' + id).remove();
             } else {
                 readingList = readingList.filter(item => item.id !== id);
                 renderReadingList();
