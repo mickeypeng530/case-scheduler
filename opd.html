@@ -350,7 +350,9 @@
             font-weight: 600;
             font-size: 0.85rem;
             padding: 8px;
-            letter-spacing: 4px;
+            letter-spacing: 2px;
+            white-space: nowrap;
+            word-break: keep-all;
         }
 
         /* Plan summary 與 plan body */
@@ -1807,6 +1809,13 @@
     const LINE_DATE_PATTERN = /(\d{2})\/(\d{1,2})\/(\d{1,2})|(?:^|\s)(\d{1,2})\/(\d{1,2})(?!\d)/g;
     // 「討論／建議」行 → 不計入
     const DISCUSS_PATTERN = /\b(consider|may|discuss|favor|build|建議|考慮|可能|可考慮|商量|討論)\b/i;
+    const NHI_PATTERN = /\bNHI\b/i;
+    const SELF_PAID_PATTERN = /\b(self\s*paid?|自費)\b/i;
+    function detectPayment(line) {
+        if (NHI_PATTERN.test(line)) return 'NHI';
+        if (SELF_PAID_PATTERN.test(line)) return 'self';
+        return null;
+    }
 
     function extractLineDates(line, refDateStr) {
         const today = refDateStr || formatDate(new Date());
@@ -1865,6 +1874,8 @@
             // 該行最早的明確日期，給 tooltip 顯示
             const lineDateLabel = explicitDates[0] ? explicitDates[0].slice(2).replace(/-/g, '/') : (line.match(SHORT_DATE_RE)?.[0] || '');
 
+            const payment = detectPayment(line);
+
             PROC_KEYWORDS.forEach(k => {
                 const matches = line.match(k.re);
                 if (!matches || !matches.length) return;
@@ -1873,7 +1884,7 @@
                 else if (hasExplicitFuture && !hasExplicitPastOrToday) kind = 'planned';
                 else kind = 'done';
                 counts[k.name][kind] += matches.length;
-                counts[k.name].dates.push({ date: lineDateLabel, kind, line: line.trim() });
+                counts[k.name].dates.push({ date: lineDateLabel, kind, payment, line: line.trim() });
             });
         });
 
@@ -2012,16 +2023,22 @@
                         // 未確認，且本次有 CT NB / TAME / pRF
                         acIcon = `<span class="ac-icon ac-unknown" title="未確認抗凝劑使用情況；本次有 CT NB / TAME / pRF，請於門診確認">⚠️ 未確認抗凝</span>`;
                     }
-                    // Procedure auto-summary（done×N，計畫中另外標）+ hover 顯示日期
+                    // Procedure auto-summary（done×N，計畫中另外標）+ hover 顯示日期 + NHI/self
                     const summaryPills = [
                         ...summary.items.map(it => {
                             const planNote = it.planned ? `<span style="opacity:0.7;font-size:0.65rem"> +${it.planned}計</span>` : '';
-                            const main = it.done ? `${escapeHtml(it.name)}×${it.done}` : `${escapeHtml(it.name)} 計${it.planned}`;
-                            const datesText = (it.dates || []).map(d => `${d.date || '-'} (${d.kind === 'planned' ? '計' : '已'})`).join('\n');
+                            // 若 done 都同一付款型，chip 直接顯示
+                            const donePayments = (it.dates || []).filter(d => d.kind === 'done').map(d => d.payment).filter(Boolean);
+                            const samePay = donePayments.length === it.done && donePayments.length && donePayments.every(p => p === donePayments[0]);
+                            const payTag = samePay ? ` ${donePayments[0]}` : '';
+                            const main = it.done ? `${escapeHtml(it.name)}×${it.done}${escapeHtml(payTag)}` : `${escapeHtml(it.name)} 計${it.planned}`;
+                            const datesText = (it.dates || []).map(d => {
+                                const pay = d.payment ? `${d.payment} ` : '';
+                                return `${pay}${d.date || '-'} (${d.kind === 'planned' ? '計' : '已'})`;
+                            }).join('\n');
                             const tip = `已完成 ${it.done}, 計畫中 ${it.planned}` + (datesText ? `\n────\n${datesText}` : '');
                             return `<span class="pill" title="${escapeAttr(tip)}">${main}${planNote}</span>`;
                         }),
-                        summary.nextRTC ? `<span class="pill rtc">下次 RTC: ${summary.nextRTC.slice(5)}</span>` : '',
                         summary.hasMultiRTC ? `<span class="pill warn" title="${escapeAttr(summary.rtcDates.join('\n'))}">多 RTC ${summary.rtcDates.length}</span>` : '',
                         summary.isSelfRTC ? `<span class="pill warn">自我約診</span>` : ''
                     ].filter(Boolean).join('');
@@ -2529,12 +2546,35 @@
             const summary = summarizePlan(planText, date);
             const lines = [];
             summary.items.forEach(it => {
-                const datesStr = (it.dates || []).map(d => d.date || '-').filter(Boolean).join(', ');
-                const main = it.done ? `${it.name}×${it.done}` : `${it.name} 計${it.planned}`;
-                const planNote = it.planned ? ` +${it.planned}計` : '';
-                lines.push(`${main}${planNote}${datesStr ? ` (${datesStr})` : ''}`);
+                // done 與 planned 分組顯示
+                const doneEvts = (it.dates || []).filter(d => d.kind === 'done');
+                const planEvts = (it.dates || []).filter(d => d.kind === 'planned');
+
+                const formatGroup = (events) => {
+                    if (!events.length) return '';
+                    const payments = events.map(e => e.payment).filter(Boolean);
+                    const samePayment = payments.length && payments.length === events.length && payments.every(p => p === payments[0]);
+                    if (samePayment) {
+                        // Prolia×3 NHI (25/03/26, 09/24, 26/04/22)
+                        const dates = events.map(e => e.date).filter(Boolean).join(', ');
+                        return `×${events.length} ${payments[0]}${dates ? ` (${dates})` : ''}`;
+                    } else {
+                        // 混合或無付款標記：列每個 (NHI 25/03/26, self 04/22) 等
+                        const parts = events.map(e => `${e.payment ? e.payment + ' ' : ''}${e.date || '-'}`);
+                        return `×${events.length} (${parts.join(', ')})`;
+                    }
+                };
+
+                const doneStr = formatGroup(doneEvts);
+                const planStr = planEvts.length ? `, 計${planEvts.length}` + (planEvts.some(e => e.date) ? ` (${planEvts.map(e => e.date).filter(Boolean).join(', ')})` : '') : '';
+
+                if (doneEvts.length) {
+                    lines.push(`${it.name}${doneStr}${planStr}`);
+                } else if (planEvts.length) {
+                    lines.push(`${it.name} 計${planEvts.length}` + (planEvts.some(e => e.date) ? ` (${planEvts.map(e => e.date).filter(Boolean).join(', ')})` : ''));
+                }
             });
-            if (summary.nextRTC) lines.push(`下次 RTC: ${summary.nextRTC.slice(2).replace(/-/g, '/')}`);
+            if (summary.hasMultiRTC) lines.push(`⚠ 多 RTC: ${summary.rtcDates.join(', ')}`);
             if (summary.isSelfRTC) lines.push('自我約診');
             const generated = lines.join('\n');
             const ta = document.getElementById('v-exam');
