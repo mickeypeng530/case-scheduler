@@ -287,8 +287,20 @@
         .col-num    { width: 36px; text-align: center; }
         .col-record { width: 110px; }
         .visit-table tbody td.col-record { white-space: nowrap; overflow: hidden; }
-        .visit-table tbody td.col-record .record-line { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; font-weight: 600; }
-        .visit-table tbody td.col-record .age-line { font-size: 0.78rem; color: var(--text-primary); margin-top: 1px; }
+        .visit-table tbody td.col-record .record-line {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            display: block;
+            font-weight: 600;
+            font-size: 0.85rem;
+        }
+        .visit-table tbody td.col-record .record-line .age-inline {
+            font-weight: 400;
+            font-size: 0.78rem;
+            color: var(--text-secondary);
+            margin-left: 4px;
+        }
         .visit-table tbody td.col-record .ref-line { font-size: 0.74rem; color: var(--text-primary); font-style: italic; margin-top: 1px; }
         .col-labs   { width: 100px; font-size: 0.85rem; }
         .col-extra  { width: 140px; font-size: 0.88rem; }
@@ -401,13 +413,19 @@
         .patient-summary.bone { background: rgba(168,85,247,0.12); color: #d8b4fe; border-left: 2px solid #a855f7; }
         .patient-summary.pain { background: rgba(236,72,153,0.12); color: #fbcfe8; border-left: 2px solid #ec4899; }
         .plan-body .more-toggle {
-            display: inline-block;
-            margin-top: 4px;
+            position: absolute;
+            bottom: 2px;
+            right: 4px;
             color: var(--color-info);
-            font-size: 0.78rem;
+            font-size: 0.7rem;
             cursor: pointer;
             user-select: none;
+            background: var(--bg-secondary);
+            padding: 1px 4px;
+            border-radius: 3px;
+            line-height: 1.2;
         }
+        .col-plan { position: relative; }
         .plan-line.done { color: #86efac; }    /* * 開頭已完成 */
         .plan-line.plan { color: var(--text-secondary); }   /* - 開頭計畫中 */
         .plan-line.rtc-line { color: #93c5fd; font-weight: 500; }
@@ -507,19 +525,19 @@
             position: absolute;
             top: calc(100% + 4px);
             left: 0;
-            background: var(--bg-tertiary);
-            border: 1px solid var(--border);
-            color: var(--text-primary);
-            padding: 6px 10px;
+            background: linear-gradient(135deg, #2e1d4d 0%, #1e1b3a 100%);
+            border: 1.5px solid #a855f7;
+            color: #f3e8ff;
+            padding: 8px 12px;
             border-radius: 6px;
             white-space: pre-wrap;
             width: max-content;
             max-width: 420px;
-            box-shadow: 0 4px 14px rgba(0,0,0,0.5);
+            box-shadow: 0 6px 18px rgba(168,85,247,0.3);
             font-size: 0.84rem;
             font-weight: 400;
             z-index: 100;
-            line-height: 1.4;
+            line-height: 1.45;
             text-align: left;
         }
         .exam-summary .pill.rtc {
@@ -2015,7 +2033,7 @@
             // 去除前後空行避免顯示空白
             while (planLines.length && !planLines[0].trim()) planLines.shift();
             while (planLines.length && !planLines[planLines.length - 1].trim()) planLines.pop();
-            const showLines = state.expandedPlans?.has(v.recordNumber) ? planLines : planLines.slice(-3);
+            const showLines = state.expandedPlans?.has(v.recordNumber) ? planLines : planLines.slice(-4);
             const hasMore = planLines.length > showLines.length;
 
             const summaryPills = [
@@ -2049,8 +2067,7 @@
               <tr class="${v.noShow ? 'no-show' : ''}" data-record="${escapeAttr(v.recordNumber)}">
                 <td class="col-num">${escapeHtml(String(v.orderInClinic || ''))}</td>
                 <td class="col-record">
-                    <span class="record-line">${escapeHtml(v.recordNumber)}${p.surname ? ` (${escapeHtml(String(p.surname).replace(/\s+/g,''))})` : ''}</span>
-                    ${ageDisplay ? `<div class="age-line">${escapeHtml(ageDisplay)}</div>` : ''}
+                    <span class="record-line">${escapeHtml(v.recordNumber)}${p.surname ? ` (${escapeHtml(String(p.surname).replace(/\s+/g,''))})` : ''}${ageDisplay ? `<span class="age-inline">${escapeHtml(ageDisplay)}</span>` : ''}</span>
                     ${referrerDisplay ? `<div class="ref-line">${escapeHtml(referrerDisplay)}</div>` : ''}
                     <div class="status-badges">${statusBadges}</div>
                 </td>
@@ -2117,7 +2134,7 @@
                             `<span class="tag-chip" data-status="${s}">${escapeHtml(p)}<span class="status-flag">${STATUS_LABEL[s] || s}</span></span>`
                         ).join('')}</div>`;
                     })()}
-                    <div class="plan-body">${showLines.map(highlightPlanLine).filter(Boolean).join('<br>')}${hasMore ? `<br><span class="more-toggle" data-record="${escapeAttr(v.recordNumber)}">▼ 顯示全部 ${planLines.length} 行</span>` : (state.expandedPlans?.has(v.recordNumber) && planLines.length > 3 ? `<br><span class="more-toggle" data-record="${escapeAttr(v.recordNumber)}">▲ 收合</span>` : '')}</div>
+                    <div class="plan-body">${showLines.map(highlightPlanLine).filter(Boolean).join('<br>')}${hasMore ? `<span class="more-toggle" data-record="${escapeAttr(v.recordNumber)}">▼ ${planLines.length} 行</span>` : (state.expandedPlans?.has(v.recordNumber) && planLines.length > 4 ? `<span class="more-toggle" data-record="${escapeAttr(v.recordNumber)}">▲ 收合</span>` : '')}</div>
                 </td>
                 <td class="col-tags"><div class="visit-tags">${tagChips}</div></td>
                 <td class="col-actions">
