@@ -2214,8 +2214,9 @@
                         // 未確認，且本次有 CT NB / TAME / pRF
                         acIcon = `<span class="ac-icon ac-unknown" title="未確認抗凝劑使用情況；本次有 CT NB / TAME / pRF，請於門診確認">⚠️ 未確認抗凝</span>`;
                     }
-                    // 過濾掉手動已涵蓋的類別 (auto chip 智能過濾)
+                    // 過濾掉手動已涵蓋的類別 (auto chip 智能過濾)；MRI 不秀於本次概況
                     const filteredItems = summary.items.filter(it => {
+                        if (it.name === 'MRI') return false;
                         if (p.bonePlanSummary && BONE_PROCS.includes(it.name)) return false;
                         if (p.painPlanSummary && PAIN_PROCS.includes(it.name)) return false;
                         return true;
@@ -2353,10 +2354,7 @@
                 updatedAt: now,
                 firstVisitDate: existing.firstVisitDate || visit.date
             };
-            // 只寫非空值（避免清掉既有）
-            Object.keys(patientPartial).forEach(k => {
-                if (patientPartial[k] === '' && existing[k]) merged[k] = existing[k];
-            });
+            // user 清空欄位 = 故意清空（不再保護）
             updates['opd/patients/' + patientPartial.recordNumber] = merged;
         }
 
@@ -2527,7 +2525,7 @@
     }
 
     // ========== Visit modal ==========
-    const DEFAULT_TAGS = ['鬆', 'CT NB', 'SONO', 'TAME', 'MRI', 'PRP', 'f/u', 'med'];
+    const DEFAULT_TAGS = ['鬆', 'CT NB', 'SONO', 'TAME', 'MRI', 'PRP', 'f/u', 'med', 'other'];
     const DEFAULT_PROCEDURES = ['CT NB', 'MRI', 'SONO', 'TAME', '鬆', 'pRF', 'PRP'];
     const STATUS_CYCLE = [undefined, 'pending', 'done', 'pm', 'am'];
     const STATUS_LABEL = { pending: '待', done: '已', pm: 'PM', am: 'AM' };
