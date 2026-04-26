@@ -449,6 +449,33 @@
         .ac-line {
             margin-bottom: 3px;
         }
+        .exam-summary {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 3px;
+            margin-bottom: 4px;
+            padding-bottom: 4px;
+            border-bottom: 1px dashed rgba(255,255,255,0.08);
+        }
+        .exam-summary .pill {
+            display: inline-flex;
+            padding: 1px 6px;
+            background: rgba(99,102,241,0.18);
+            border: 1px solid rgba(99,102,241,0.3);
+            color: #c7d2fe;
+            border-radius: 4px;
+            font-size: 0.7rem;
+        }
+        .exam-summary .pill.rtc {
+            background: rgba(34,197,94,0.18);
+            border-color: rgba(34,197,94,0.4);
+            color: #bbf7d0;
+        }
+        .exam-summary .pill.warn {
+            background: rgba(251,191,36,0.18);
+            border-color: rgba(251,191,36,0.4);
+            color: #fde68a;
+        }
         .ac-icon {
             display: inline-flex;
             padding: 1px 6px;
@@ -1462,30 +1489,80 @@
     ];
     const RTC_PATTERN = /(?:(\d{2})\/)?(\d{1,2})\/(\d{1,2})\s*RTC(\??)/gi;
 
+    // 行級日期偵測（line 中所有日期）
+    const LINE_DATE_PATTERN = /(\d{2})\/(\d{1,2})\/(\d{1,2})|(?:^|\s)(\d{1,2})\/(\d{1,2})(?!\d)/g;
+    // 「討論／建議」行 → 不計入
+    const DISCUSS_PATTERN = /\b(consider|may|discuss|favor|build|建議|考慮|可能|可考慮|商量|討論)\b/i;
+
+    function extractLineDates(line, refDateStr) {
+        const today = refDateStr || formatDate(new Date());
+        const refYear = new Date(today).getFullYear();
+        const dates = [];
+        let m;
+        const re = new RegExp(LINE_DATE_PATTERN.source, 'g');
+        while ((m = re.exec(line)) !== null) {
+            let yy, mm, dd;
+            if (m[1]) {  // YY/M/D
+                yy = `20${m[1]}`;
+                mm = m[2].padStart(2, '0');
+                dd = m[3].padStart(2, '0');
+            } else {  // M/D，補今年
+                yy = String(refYear);
+                mm = m[4].padStart(2, '0');
+                dd = m[5].padStart(2, '0');
+            }
+            dates.push(`${yy}-${mm}-${dd}`);
+        }
+        return dates;
+    }
+
     function summarizePlan(plan, currentDate) {
         if (!plan) return { items: [], rtcDates: [], hasMultiRTC: false, isSelfRTC: false };
-        const counts = {};
-        PROC_KEYWORDS.forEach(k => {
-            const matches = plan.match(k.re);
-            if (matches && matches.length) counts[k.name] = matches.length;
+
+        const today = currentDate || formatDate(new Date());
+        const lines = plan.split(/\r?\n/);
+        const counts = {};  // { name: { done, planned } }
+        PROC_KEYWORDS.forEach(k => { counts[k.name] = { done: 0, planned: 0 }; });
+
+        lines.forEach(line => {
+            if (!line.trim()) return;
+            // 排除討論行（含 Consider / may / favor 等）
+            const isDiscuss = DISCUSS_PATTERN.test(line);
+            const dates = extractLineDates(line, today);
+            const hasFutureDate = dates.some(d => d > today);
+            const hasPastOrToday = dates.some(d => d <= today);
+
+            PROC_KEYWORDS.forEach(k => {
+                const matches = line.match(k.re);
+                if (!matches || !matches.length) return;
+                if (isDiscuss) return;  // 討論行不計
+                if (hasFutureDate && !hasPastOrToday) {
+                    counts[k.name].planned += matches.length;
+                } else {
+                    // 有過去/今日日期，或無日期（默認當完成）
+                    counts[k.name].done += matches.length;
+                }
+            });
         });
 
         const isSelfRTC = /\bself\s*RTC\b/i.test(plan);
 
-        // 抽 RTC 日期
+        // RTC 日期（用 RTC_PATTERN，未來的）
         const rtcMatches = [...plan.matchAll(RTC_PATTERN)];
-        const today = currentDate || formatDate(new Date());
-        const futureDates = [];
+        const futureRTC = [];
         rtcMatches.forEach(m => {
             const yy = m[1] ? `20${m[1]}` : new Date(today).getFullYear().toString();
             const mm = m[2].padStart(2, '0');
             const dd = m[3].padStart(2, '0');
             const dateStr = `${yy}-${mm}-${dd}`;
-            if (dateStr > today) futureDates.push(dateStr);
+            if (dateStr > today) futureRTC.push(dateStr);
         });
-        const uniqueFuture = [...new Set(futureDates)].sort();
+        const uniqueFuture = [...new Set(futureRTC)].sort();
 
-        const items = Object.entries(counts).map(([k, n]) => ({ name: k, count: n }));
+        const items = Object.entries(counts)
+            .filter(([_, c]) => c.done || c.planned)
+            .map(([name, c]) => ({ name, done: c.done, planned: c.planned, count: c.done }));
+
         return {
             items,
             rtcDates: uniqueFuture,
@@ -1600,7 +1677,22 @@
                     } else if (needs) {
                         acIcon = `<span class="ac-icon ac-unknown" title="未確認抗凝劑使用情況；本次有 CT NB / SONO / TAME，請於門診確認">⚠️ 未確認抗凝</span>`;
                     }
-                    return `${acIcon ? `<div class="ac-line">${acIcon}</div>` : ''}<div class="exam-content${(v.examEducation || '').length < 80 ? ' short' : ''}" data-record="${escapeAttr(v.recordNumber)}">${escapeHtml(v.examEducation || '')}</div>`;
+                    // Procedure auto-summary（done×N，計畫中另外標）
+                    const summaryPills = [
+                        ...summary.items.map(it => {
+                            const planNote = it.planned ? `<span style="opacity:0.7;font-size:0.65rem"> +${it.planned}計</span>` : '';
+                            const main = it.done ? `${escapeHtml(it.name)}×${it.done}` : `${escapeHtml(it.name)} 計${it.planned}`;
+                            return `<span class="pill" title="已完成 ${it.done}, 計畫中 ${it.planned}">${main}${planNote}</span>`;
+                        }),
+                        summary.nextRTC ? `<span class="pill rtc">下次 RTC: ${summary.nextRTC.slice(5)}</span>` : '',
+                        summary.hasMultiRTC ? `<span class="pill warn">多 RTC ${summary.rtcDates.length}</span>` : '',
+                        summary.isSelfRTC ? `<span class="pill warn">自我約診</span>` : ''
+                    ].filter(Boolean).join('');
+                    return `
+                        ${acIcon ? `<div class="ac-line">${acIcon}</div>` : ''}
+                        ${summaryPills ? `<div class="exam-summary">${summaryPills}</div>` : ''}
+                        <div class="exam-content${(v.examEducation || '').length < 80 ? ' short' : ''}" data-record="${escapeAttr(v.recordNumber)}">${escapeHtml(v.examEducation || '')}</div>
+                    `;
                 })()}</td>
                 <td class="col-plan">
                     ${(() => {
@@ -1610,7 +1702,6 @@
                             `<span class="tag-chip" data-status="${s}">${escapeHtml(p)}<span class="status-flag">${STATUS_LABEL[s] || s}</span></span>`
                         ).join('')}</div>`;
                     })()}
-                    <div class="plan-summary">${summaryPills || '<span style="color:var(--text-muted)">（plan 尚未填）</span>'}</div>
                     <div class="plan-body">${showLines.map(highlightPlanLine).filter(Boolean).join('<br>')}${hasMore ? `<br><span class="more-toggle" data-record="${escapeAttr(v.recordNumber)}">▼ 顯示全部 ${planLines.length} 行</span>` : (state.expandedPlans?.has(v.recordNumber) && planLines.length > 3 ? `<br><span class="more-toggle" data-record="${escapeAttr(v.recordNumber)}">▲ 收合</span>` : '')}</div>
                 </td>
                 <td class="col-tags"><div class="visit-tags">${tagChips}</div></td>
