@@ -915,19 +915,13 @@
                 <input type="text" id="v-age-sex" placeholder="55/F">
             </div>
         </div>
-        <div class="field-row">
-            <div class="field">
-                <label>eGFR</label>
-                <input type="text" id="v-egfr" placeholder=">60">
-            </div>
-            <div class="field">
-                <label>來源</label>
-                <input type="text" id="v-referrer" placeholder="Buo / Hsu / Huang / web ...">
-            </div>
+        <div class="field">
+            <label>來源</label>
+            <input type="text" id="v-referrer" placeholder="Buo / Hsu / Huang / web ...">
         </div>
         <div class="field">
-            <label>抽血 / Labs（病人主表，多行）</label>
-            <textarea id="v-labs" placeholder="INR 1.04 (26/04)&#10;Ca 9.4 (26/04)&#10;T -2.8 (R hip)" style="min-height: 70px;"></textarea>
+            <label>抽血 / Labs（病人主表，多行；包含 eGFR、Cr、Ca、INR、WBC、Plt 等）</label>
+            <textarea id="v-labs" placeholder="eGFR >60&#10;Cr 0.83&#10;Ca 9.4 (26/04)&#10;INR 1.04 (26/04)&#10;T -2.8 (R hip)" style="min-height: 90px;"></textarea>
         </div>
         <div class="field">
             <label>其他背景（病人主表，跨次共用）</label>
@@ -1254,9 +1248,11 @@
         adHoc.forEach(d => map.set(d.date, d));
         const allDates = [...map.values()].sort((a, b) => b.date.localeCompare(a.date));  // 新到舊
 
-        // 預設選最近一個門診日（只在尚未選擇時）
+        // 預設選最近一個門診日；優先使用 localStorage 記住的日期，再來才是「最近一次」
         if (!state.currentClinicDate) {
-            state.currentClinicDate = findNearestClinicDate(allDates);
+            const saved = localStorage.getItem('opd:currentClinicDate');
+            const validSaved = saved && allDates.find(d => d.date === saved);
+            state.currentClinicDate = validSaved ? saved : findNearestClinicDate(allDates);
         }
         const currentValue = state.currentClinicDate;
 
@@ -1431,13 +1427,20 @@
             ].filter(Boolean).join('');
 
             const ageDisplay = displayAgeSex(p, date) || p.ageSex || '';
-            const labsDisplay = p.labs || (p.INR ? `INR ${p.INR}${p.INRDate ? ` (${p.INRDate})` : ''}` : '');
+            // labs 顯示：優先 patient.labs；若無，fallback 合成 (eGFR + INR)
+            let labsDisplay = p.labs || '';
+            if (!labsDisplay) {
+                const synth = [];
+                if (p.eGFR) synth.push(`eGFR ${p.eGFR}`);
+                if (p.INR) synth.push(`INR ${p.INR}${p.INRDate ? ` (${p.INRDate})` : ''}`);
+                labsDisplay = synth.join('\n');
+            }
             return `
               <tr class="${v.noShow ? 'no-show' : ''}" data-record="${escapeAttr(v.recordNumber)}">
                 <td class="col-num">${escapeHtml(String(v.orderInClinic || ''))}</td>
                 <td class="col-record">
                     <span class="record-line">${escapeHtml(v.recordNumber)}${p.surname ? ` (${escapeHtml(String(p.surname).replace(/\s+/g,''))})` : ''}</span>
-                    ${ageDisplay ? `<div class="age-line">${escapeHtml(ageDisplay)}${p.eGFR ? ` ‧ <span class="egfr-line">eGFR ${escapeHtml(p.eGFR)}</span>` : ''}</div>` : ''}
+                    ${ageDisplay ? `<div class="age-line">${escapeHtml(ageDisplay)}</div>` : ''}
                     ${p.referrer ? `<div class="ref-line">${escapeHtml(p.referrer)}</div>` : ''}
                     <div class="status-badges">${statusBadges}</div>
                 </td>
@@ -1623,6 +1626,7 @@
         // 日期選擇
         document.getElementById('clinic-date-select').addEventListener('change', (e) => {
             state.currentClinicDate = e.target.value;
+            localStorage.setItem('opd:currentClinicDate', e.target.value);
             onClinicDateChanged(state.currentClinicDate);
             updateClinicDateMeta();
         });
@@ -1718,9 +1722,16 @@
         document.getElementById('v-surname').value = patient.surname || '';
         // 年齡/性別：若已有 birthYear 則計算當前年齡顯示
         document.getElementById('v-age-sex').value = displayAgeSex(patient, date) || patient.ageSex || '';
-        document.getElementById('v-egfr').value = patient.eGFR || '';
         document.getElementById('v-referrer').value = patient.referrer || '';
-        document.getElementById('v-labs').value = patient.labs || (patient.INR ? `INR ${patient.INR}${patient.INRDate ? ` (${patient.INRDate})` : ''}` : '');
+        // labs 整合：若 patient.labs 已有就用，否則合成（含舊 eGFR/INR fallback）
+        let labsValue = patient.labs || '';
+        if (!labsValue) {
+            const synthesized = [];
+            if (patient.eGFR) synthesized.push(`eGFR ${patient.eGFR}`);
+            if (patient.INR) synthesized.push(`INR ${patient.INR}${patient.INRDate ? ` (${patient.INRDate})` : ''}`);
+            labsValue = synthesized.join('\n');
+        }
+        document.getElementById('v-labs').value = labsValue;
         document.getElementById('v-extra').value = patient.extra || '';
         document.getElementById('v-exam').value = visit.examEducation || '';
         document.getElementById('v-plan').value = visit.plan || '';
@@ -1792,10 +1803,9 @@
         const patientPartial = {
             recordNumber,
             surname: document.getElementById('v-surname').value.trim(),
-            ageSex: ageSexInput,  // 保留原樣供顯示備份
+            ageSex: ageSexInput,
             birthYear: parsed?.birthYear || null,
             sex: parsed?.sex || '',
-            eGFR: document.getElementById('v-egfr').value.trim(),
             referrer: document.getElementById('v-referrer').value.trim(),
             labs: document.getElementById('v-labs').value.trim(),
             extra: document.getElementById('v-extra').value.trim()
@@ -1859,13 +1869,15 @@
             document.getElementById('v-record-number').value = result.recordNumber;
             document.getElementById('v-surname').value = result.surname;
             document.getElementById('v-age-sex').value = result.ageSex;
-            document.getElementById('v-egfr').value = result.eGFR;
 
             const refDetected = extractReferrer(result.extra);
             const labStuff = extractLabs(result.extra);
-            // 也把 INR 加進 labs（如果 parser 抓到）
-            const inrLine = result.INR ? `INR ${result.INR}${result.INRDate ? ` (${result.INRDate})` : ''}` : '';
-            const labsCombined = [labStuff.labs, inrLine].filter(Boolean).join(' / ');
+            // 把 eGFR、INR 也加進 labs（用換行分隔，方便閱讀）
+            const labLines = [];
+            if (result.eGFR) labLines.push(`eGFR ${result.eGFR}`);
+            if (labStuff.labs) labLines.push(labStuff.labs);
+            if (result.INR) labLines.push(`INR ${result.INR}${result.INRDate ? ` (${result.INRDate})` : ''}`);
+            const labsCombined = labLines.join('\n');
 
             document.getElementById('v-referrer').value = refDetected;
             document.getElementById('v-labs').value = labsCombined;
@@ -1907,6 +1919,7 @@
         if (newIdx < 0 || newIdx >= options.length) return;
         select.value = options[newIdx].value;
         state.currentClinicDate = options[newIdx].value;
+        localStorage.setItem('opd:currentClinicDate', state.currentClinicDate);
         onClinicDateChanged(state.currentClinicDate);
         updateClinicDateMeta();
     }
