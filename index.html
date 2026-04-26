@@ -1242,32 +1242,17 @@
     </div>
 
     <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+        // ========== Firebase ==========
+        import { fbAuth, fbDb } from "./firebase-init.js";
         import {
-            getAuth, GoogleAuthProvider,
-            signInWithPopup, signInWithRedirect, signInWithEmailAndPassword,
-            getRedirectResult, onAuthStateChanged, signOut,
-            setPersistence, browserLocalPersistence, inMemoryPersistence
+            GoogleAuthProvider,
+            signInWithPopup, signInWithEmailAndPassword,
+            onAuthStateChanged, signOut,
+            setPersistence, inMemoryPersistence
         } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
         import {
-            getDatabase, ref, set, get, update, remove, onValue, off
+            ref, set, get, update, remove, onValue
         } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
-
-        // ========== Firebase 設定 ==========
-        const FIREBASE_CONFIG = {
-            apiKey: "AIzaSyATCaOlYxkYTle1hPzYAcuXNlQHaAuO3-8",
-            authDomain: "case-scheduler-f752b.firebaseapp.com",
-            projectId: "case-scheduler-f752b",
-            storageBucket: "case-scheduler-f752b.firebasestorage.app",
-            messagingSenderId: "703006186929",
-            appId: "1:703006186929:web:57ac5b059678005455f190",
-            databaseURL: "https://case-scheduler-f752b-default-rtdb.firebaseio.com"
-        };
-
-        const fbApp = initializeApp(FIREBASE_CONFIG);
-        const fbAuth = getAuth(fbApp);
-        const fbDb = getDatabase(fbApp);
-        let db = fbDb;
 
         // ========== 登入 ==========
         let currentUser = null;
@@ -1518,7 +1503,7 @@
             saveToLocalStorage();
             
             // 同步到 Firebase
-            if (firebaseReady && db) {
+            if (firebaseReady && fbDb) {
                 set(ref(fbDb, 'scheduler'), {
                     tabs: state.tabs,
                     activeTabId: state.activeTabId,
@@ -2371,7 +2356,7 @@
             
             // 同步按鈕（手動重新載入）
             document.getElementById('sync-btn').addEventListener('click', async () => {
-                if (firebaseReady && db) {
+                if (firebaseReady && fbDb) {
                     showStatus('同步中...', true);
                     const snapshot = await get(ref(fbDb, 'scheduler'));
                     const data = snapshot.val();
