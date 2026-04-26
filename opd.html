@@ -1459,13 +1459,7 @@
             t.addEventListener('click', () => activateTab(t.dataset.panel));
         });
 
-        // 搜尋切換
-        document.getElementById('search-toggle-btn').addEventListener('click', () => {
-            const inp = document.getElementById('search-input');
-            inp.classList.toggle('show');
-            if (inp.classList.contains('show')) inp.focus();
-            else inp.value = '';
-        });
+        // 舊 search-toggle-btn 已移除；門診日的 search 在 bindClinicDayUI 內綁
     });
 
     // ========== 登入後初始化 ==========
@@ -2897,7 +2891,7 @@
             // 預設放到 pastHistory（慢性病史）；若已有 v-past-history 則不覆蓋（保留 user 已有內容）
             const phEl = document.getElementById('v-past-history');
             if (!phEl.value.trim()) phEl.value = extraRemaining;
-            document.getElementById('v-extra').value = '';  // extra legacy 不再使用
+            // v-extra legacy field 已移除，不需要清空
             document.getElementById('v-exam').value = result.exam;
             document.getElementById('v-plan').value = result.plan;
             // tags 合併
