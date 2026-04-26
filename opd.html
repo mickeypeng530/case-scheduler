@@ -730,37 +730,38 @@
         .modal {
             background: var(--bg-secondary);
             border: 1px solid var(--border);
-            border-radius: 12px;
-            padding: 22px;
+            border-radius: 10px;
+            padding: 14px 16px;
             width: 90%;
             max-width: 480px;
-            max-height: 90vh;
+            max-height: 92vh;
             overflow-y: auto;
         }
         .modal h3 {
-            margin-bottom: 16px;
+            margin-bottom: 8px;
+            font-size: 1rem;
             color: var(--text-primary);
         }
         .modal .field {
-            margin-bottom: 6px;
+            margin-bottom: 4px;
         }
         .modal .field label {
             display: block;
-            font-size: 0.82rem;
+            font-size: 0.78rem;
             color: var(--text-secondary);
-            margin-bottom: 2px;
+            margin-bottom: 1px;
         }
         .modal .field input, .modal .field textarea {
             width: 100%;
-            padding: 6px 10px;
+            padding: 4px 8px;
             background: var(--bg-primary);
             border: 1px solid var(--border);
             color: var(--text-primary);
-            border-radius: 6px;
+            border-radius: 5px;
             font-family: inherit;
-            font-size: 0.9rem;
+            font-size: 0.88rem;
         }
-        .modal .field textarea { resize: vertical; min-height: 50px; }
+        .modal .field textarea { resize: vertical; min-height: 40px; line-height: 1.35; }
         .modal .field-row {
             display: grid;
             grid-template-columns: 1fr 1fr;
@@ -1485,15 +1486,20 @@
         const now = Date.now();
 
         checked.forEach((r, i) => {
+            const labStuff = extractLabs(r.extra || '');
+            const boneStuff = extractBoneScore(labStuff.remaining);
             const labLines = [];
             if (r.eGFR) labLines.push(`eGFR ${r.eGFR}`);
-            const labStuff = extractLabs(r.extra || '');
             if (labStuff.labs) labLines.push(labStuff.labs);
             if (r.INR && !/INR/i.test(labStuff.labs || '')) {
                 labLines.push(`INR ${r.INR}${r.INRDate ? ` (${r.INRDate})` : ''}`);
             }
             const refDetected = extractReferrer(r.extra || '');
             const parsedAge = parseAgeSex(r.ageSex, date);
+            // pastHistory: 抽完 labs / boneScore / referrer 後的剩餘
+            let phRemaining = boneStuff.remaining;
+            if (refDetected) phRemaining = phRemaining.replace(new RegExp(`(^|[\\s/、,，])${refDetected}([\\s/、,，]|$)`, 'g'), ' ').trim();
+            phRemaining = phRemaining.replace(/\s*\/\s*\/\s*/g, ' / ').replace(/^\s*\/\s*|\s*\/\s*$/g, '').trim();
 
             const existingPatient = state.patients[r.recordNumber] || {};
             updates[`opd/patients/${r.recordNumber}`] = {
@@ -1505,8 +1511,8 @@
                 sex: parsedAge?.sex || existingPatient.sex || '',
                 referrer: refDetected || existingPatient.referrer || '',
                 labs: labLines.join('\n') || existingPatient.labs || '',
-                pastHistory: existingPatient.pastHistory || '',
-                boneScore: existingPatient.boneScore || '',
+                pastHistory: existingPatient.pastHistory || phRemaining || '',
+                boneScore: existingPatient.boneScore || boneStuff.boneScore || '',
                 anticoagState: existingPatient.anticoagState || 'unknown',
                 anticoagulants: existingPatient.anticoagulants || [],
                 bonePlanSummary: existingPatient.bonePlanSummary || '',
@@ -2525,9 +2531,7 @@
         document.getElementById('v-modal-cancel').addEventListener('click', closeVisitModal);
         document.getElementById('v-modal-save').addEventListener('click', handleVisitSave);
         document.getElementById('v-modal-delete').addEventListener('click', handleVisitDelete);
-        document.getElementById('visit-modal').addEventListener('click', (e) => {
-            if (e.target.id === 'visit-modal') closeVisitModal();
-        });
+        // 點外面不關閉（避免誤關），只透過取消/儲存/Esc
 
         // 病歷號失焦自動帶資料
         document.getElementById('v-record-number').addEventListener('blur', autoFillFromPatientLookup);
@@ -2628,8 +2632,11 @@
             document.getElementById('v-age-sex').value = result.ageSex;
 
             const refDetected = extractReferrer(result.extra);
+            // 抽出 labs（真血液檢驗）
             const labStuff = extractLabs(result.extra);
-            // 把 eGFR 與 labs 整合；如果 labStuff.labs 已含 INR 則不重複加
+            // 抽出骨鬆評估（從 labs 剩餘文字繼續抽）
+            const boneStuff = extractBoneScore(labStuff.remaining);
+            // 把 eGFR 與 labs 整合
             const labLines = [];
             if (result.eGFR) labLines.push(`eGFR ${result.eGFR}`);
             if (labStuff.labs) labLines.push(labStuff.labs);
@@ -2640,12 +2647,17 @@
 
             document.getElementById('v-referrer').value = refDetected;
             document.getElementById('v-labs').value = labsCombined;
-            // extra 剩餘部分（去掉抽出的 lab/referrer）
-            let extraRemaining = labStuff.remaining;
+            document.getElementById('v-bone-score').value = boneStuff.boneScore;
+            // 剩餘部分填入慢性病史 / extra
+            let extraRemaining = boneStuff.remaining;
             if (refDetected) {
                 extraRemaining = extraRemaining.replace(new RegExp(`(^|[\\s/、,，])${refDetected}([\\s/、,，]|$)`, 'g'), ' ').trim();
             }
-            document.getElementById('v-extra').value = extraRemaining;
+            extraRemaining = extraRemaining.replace(/\s*\/\s*\/\s*/g, ' / ').replace(/^\s*\/\s*|\s*\/\s*$/g, '').trim();
+            // 預設放到 pastHistory（慢性病史）；若已有 v-past-history 則不覆蓋（保留 user 已有內容）
+            const phEl = document.getElementById('v-past-history');
+            if (!phEl.value.trim()) phEl.value = extraRemaining;
+            document.getElementById('v-extra').value = '';  // extra legacy 不再使用
             document.getElementById('v-exam').value = result.exam;
             document.getElementById('v-plan').value = result.plan;
             // tags 合併
@@ -2851,31 +2863,47 @@
         return '';
     }
 
-    // 從 extra 抽出常見 lab 行（含 INR、Ca、T-Score、TBS、eGFR 等）
+    // 抽血類（真血液檢驗）
     const LAB_PATTERNS = [
         /INR:?\s*[\d.]+(?:\s*\([^)]+\))?/i,
         /Ca:?\s*[\d.]+(?:\s*\([^)]+\))?/i,
-        /T[-\s]?(?:Score)?:?\s*-?[\d.]+(?:\s*\([^)]+\))?/i,
-        /TBS:?\s*[\d.]+/i,
         /eGFR:?\s*[><=]*\s*[\d.]+/i,
         /Cr:?\s*[\d.]+/i,
-        /Hip\s*fr:?\s*[\d.]+%?/i,
-        /[Mm]ajor:?\s*[\d.]+%?/i
+        /WBC:?\s*[\d.]+/i,
+        /Plt:?\s*[\d.]+/i,
+        /Hb:?\s*[\d.]+/i
     ];
-    function extractLabs(text) {
-        if (!text) return { labs: '', remaining: '' };
-        const found = [];
+    // 骨鬆評估類（T-score, TBS, FRAX 等）
+    const BONE_PATTERNS = [
+        /T[-\s]?(?:Score)?:?\s*-?[\d.]+(?:\s*\([^)]+\))?/i,
+        /TBS:?\s*[\d.]+/i,
+        /FRAX[^,;\n]*?[\d.]+%?[^,;\n]*?[\d.]+%?/i,
+        /Hip\s*fr:?\s*[\d.]+%?/i,
+        /[Mm]ajor:?\s*[\d.]+%?/i,
+        /BMD[^,;\n]{0,30}/i
+    ];
+
+    function extractByPatterns(text, patterns) {
+        if (!text) return { found: '', remaining: '' };
+        const matches = [];
         let remaining = text;
-        for (const re of LAB_PATTERNS) {
+        for (const re of patterns) {
             const m = text.match(re);
             if (m) {
-                found.push(m[0]);
+                matches.push(m[0]);
                 remaining = remaining.replace(m[0], '').trim();
             }
         }
-        // 清理 remaining 多餘 / 與空白
-        remaining = remaining.replace(/\s*\/\s*/g, ' / ').replace(/\s*\/\s*\/\s*/g, ' / ').replace(/^\s*\/\s*|\s*\/\s*$/g, '').trim();
-        return { labs: found.join(' / '), remaining };
+        return { found: matches.join(' / '), remaining };
+    }
+
+    function extractLabs(text) {
+        const r = extractByPatterns(text, LAB_PATTERNS);
+        return { labs: r.found, remaining: r.remaining };
+    }
+    function extractBoneScore(text) {
+        const r = extractByPatterns(text, BONE_PATTERNS);
+        return { boneScore: r.found, remaining: r.remaining };
     }
 
     // Tab 分隔解析（單列、cell 內可能含換行）
@@ -3149,9 +3177,7 @@
         document.getElementById('pt-modal-cancel').addEventListener('click', closePatientModal);
         document.getElementById('pt-modal-save').addEventListener('click', handlePatientSave);
         document.getElementById('pt-modal-delete').addEventListener('click', handlePatientDelete);
-        document.getElementById('patient-modal').addEventListener('click', (e) => {
-            if (e.target.id === 'patient-modal') closePatientModal();
-        });
+        // 點外面不關閉（避免誤關），只透過取消/儲存/Esc
 
         // Tag editor
         const tagInput = document.getElementById('pt-tag-input');
