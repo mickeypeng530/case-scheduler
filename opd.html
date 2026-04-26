@@ -284,7 +284,7 @@
         .visit-table tbody td.col-record .record-line { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; font-weight: 600; }
         .visit-table tbody td.col-record .age-line { font-size: 0.78rem; color: var(--text-primary); margin-top: 1px; }
         .visit-table tbody td.col-record .ref-line { font-size: 0.74rem; color: var(--text-primary); font-style: italic; margin-top: 1px; }
-        .col-labs   { width: 140px; font-size: 0.78rem; }
+        .col-labs   { width: 100px; font-size: 0.76rem; }
         .col-extra  { width: 140px; font-size: 0.8rem; }
         .col-exam   { width: 160px; font-size: 0.8rem; }
         .visit-table tbody td.col-extra,
@@ -304,8 +304,8 @@
             border-radius: 2px;
         }
         .col-plan   { /* 彈性 */ }
-        .col-tags   { width: 130px; }
-        .col-actions { width: 110px; }
+        .col-tags   { width: 90px; }
+        .col-actions { width: 90px; }
 
         /* DC divider row */
         tr.dc-divider td {
@@ -1365,7 +1365,7 @@
 
     function highlightPlanLine(line) {
         const trimmed = line.trim();
-        if (!trimmed) return '<br>';
+        if (!trimmed) return '';  // 空行直接 skip
         let cls = '';
         if (trimmed.startsWith('*')) cls = 'plan-line done';
         else if (trimmed.startsWith('-')) cls = 'plan-line plan';
@@ -1406,6 +1406,9 @@
             const p = state.patients[v.recordNumber] || {};
             const summary = summarizePlan(v.plan, date);
             const planLines = (v.plan || '').split(/\r?\n/);
+            // 去除前後空行避免顯示空白
+            while (planLines.length && !planLines[0].trim()) planLines.shift();
+            while (planLines.length && !planLines[planLines.length - 1].trim()) planLines.pop();
             const showLines = state.expandedPlans?.has(v.recordNumber) ? planLines : planLines.slice(-7);
             const hasMore = planLines.length > showLines.length;
 
@@ -1430,17 +1433,19 @@
             let labsDisplay = p.labs || '';
             if (!labsDisplay) {
                 const synth = [];
-                if (p.eGFR) synth.push(`eGFR ${p.eGFR}`);
+                if (p.eGFR && isValidEGFR(p.eGFR)) synth.push(`eGFR ${p.eGFR}`);
                 if (p.INR) synth.push(`INR ${p.INR}${p.INRDate ? ` (${p.INRDate})` : ''}`);
                 labsDisplay = synth.join('\n');
             }
+            // 如果 patient 殘留 referrer-like 內容在 eGFR（legacy bug），自動把它當 referrer 顯示
+            const referrerDisplay = p.referrer || (p.eGFR && !isValidEGFR(p.eGFR) ? p.eGFR : '');
             return `
               <tr class="${v.noShow ? 'no-show' : ''}" data-record="${escapeAttr(v.recordNumber)}">
                 <td class="col-num">${escapeHtml(String(v.orderInClinic || ''))}</td>
                 <td class="col-record">
                     <span class="record-line">${escapeHtml(v.recordNumber)}${p.surname ? ` (${escapeHtml(String(p.surname).replace(/\s+/g,''))})` : ''}</span>
                     ${ageDisplay ? `<div class="age-line">${escapeHtml(ageDisplay)}</div>` : ''}
-                    ${p.referrer ? `<div class="ref-line">${escapeHtml(p.referrer)}</div>` : ''}
+                    ${referrerDisplay ? `<div class="ref-line">${escapeHtml(referrerDisplay)}</div>` : ''}
                     <div class="status-badges">${statusBadges}</div>
                 </td>
                 <td class="col-labs">${escapeHtml(labsDisplay)}</td>
@@ -1448,14 +1453,14 @@
                 <td class="col-exam">${escapeHtml(v.examEducation || '')}</td>
                 <td class="col-plan">
                     <div class="plan-summary">${summaryPills || '<span style="color:var(--text-muted)">（plan 尚未填）</span>'}</div>
-                    <div class="plan-body">${showLines.map(highlightPlanLine).join('<br>')}${hasMore ? `<span class="more-toggle" data-record="${escapeAttr(v.recordNumber)}">▼ 顯示全部 ${planLines.length} 行</span>` : (state.expandedPlans?.has(v.recordNumber) && planLines.length > 7 ? `<span class="more-toggle" data-record="${escapeAttr(v.recordNumber)}">▲ 收合</span>` : '')}</div>
+                    <div class="plan-body">${showLines.map(highlightPlanLine).filter(Boolean).join('<br>')}${hasMore ? `<br><span class="more-toggle" data-record="${escapeAttr(v.recordNumber)}">▼ 顯示全部 ${planLines.length} 行</span>` : (state.expandedPlans?.has(v.recordNumber) && planLines.length > 7 ? `<br><span class="more-toggle" data-record="${escapeAttr(v.recordNumber)}">▲ 收合</span>` : '')}</div>
                 </td>
                 <td class="col-tags"><div class="visit-tags">${tagChips}</div></td>
                 <td class="col-actions">
                     <div class="row-actions">
+                        <button data-action="edit" data-record="${escapeAttr(v.recordNumber)}">✏️ 編輯</button>
                         <button data-action="confirm" data-record="${escapeAttr(v.recordNumber)}" class="${v.status === 'confirmed' ? 'confirmed' : ''}">${v.status === 'confirmed' ? '✓ 已確認' : '✓ 確認'}</button>
                         <button data-action="copy-plan" data-record="${escapeAttr(v.recordNumber)}">📋 複製</button>
-                        <button data-action="edit" data-record="${escapeAttr(v.recordNumber)}">編輯</button>
                         <button data-action="toggle-dc" data-record="${escapeAttr(v.recordNumber)}">${v.noShow ? '↑ 移回' : '↓ 移 DC'}</button>
                     </div>
                 </td>
@@ -2069,7 +2074,10 @@
 
     const RECORD_PATTERN = /^\s*([A-Za-z]?\d{5,8})\s*(?:\(([^)]+)\))?\s*$/;
     const PLAN_DATE_PATTERN = /^\s*[\*\-]?\s*(\d{1,2}\/\d{1,2}|\d{2}\/\d{1,2}\/\d{1,2})\b/;
+    const EGFR_PATTERN = /^\s*[><=]?\s*\d+(\.\d+)?\s*$/;
     const TAG_LABELS = ['NB', '鬆', 'f/u'];
+
+    function isValidEGFR(val) { return EGFR_PATTERN.test(val || ''); }
 
     function extractINR(text) {
         const m = (text || '').match(/INR:\s*([\d.]+)\s*(?:\(([^)]+)\))?/i);
@@ -2131,12 +2139,10 @@
         }
 
         const recMatch = parts[recIdx].match(RECORD_PATTERN);
-        const extra = (parts[recIdx + 3] || '').replace(/\n+/g, ' / ');
-        const inr = extractINR(extra);
 
         const tags = [];
         const tagStartIdx = parts.length - 3;
-        if (tagStartIdx >= recIdx + 4) {
+        if (tagStartIdx >= recIdx + 3) {
             for (let i = 0; i < 3; i++) {
                 const v = (parts[tagStartIdx + i] || '').trim();
                 if (v && v !== '-' && v !== '─') tags.push(TAG_LABELS[i]);
@@ -2150,6 +2156,24 @@
             if (m) { order = parseInt(m[1]); break; }
         }
 
+        // 偵測 eGFR 欄位 shift：若 parts[recIdx+2] 不像 eGFR（沒有 >60 / 60 等格式），
+        // 表示原 docx eGFR 欄為空被 Word 省略，後續欄位整體前移 1
+        const c2 = (parts[recIdx + 2] || '').trim();
+        let eGFRVal, extraIdx, examIdx, planIdx;
+        if (isValidEGFR(c2) || !c2) {
+            eGFRVal = c2;
+            extraIdx = recIdx + 3;
+            examIdx = recIdx + 4;
+            planIdx = recIdx + 5;
+        } else {
+            eGFRVal = '';
+            extraIdx = recIdx + 2;
+            examIdx = recIdx + 3;
+            planIdx = recIdx + 4;
+        }
+        const extraVal = (parts[extraIdx] || '').replace(/\n+/g, ' / ');
+        const inr2 = extractINR(extraVal);
+
         return {
             ok: true,
             mode: 'tab',
@@ -2157,12 +2181,12 @@
             recordNumber: recMatch[1],
             surname: (recMatch[2] || '').trim().replace(/\s+/g, ''),
             ageSex: parts[recIdx + 1] || '',
-            eGFR: parts[recIdx + 2] || '',
-            extra,
-            ...inr,
+            eGFR: eGFRVal,
+            extra: extraVal,
+            ...inr2,
             tags,
-            exam: parts[recIdx + 4] || '',
-            plan: parts[recIdx + 5] || '',
+            exam: parts[examIdx] || '',
+            plan: parts[planIdx] || '',
             partsCount: parts.length
         };
     }
