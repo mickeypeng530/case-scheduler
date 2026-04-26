@@ -479,6 +479,34 @@
             border-radius: 4px;
             font-size: 0.78rem;
         }
+        /* 摘要 chip — hover 顯示 popover，不擠動其他元素 */
+        .pill.expandable {
+            max-width: 240px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            cursor: help;
+            position: relative;
+        }
+        .pill.expandable:hover::after {
+            content: attr(data-full);
+            position: absolute;
+            top: calc(100% + 4px);
+            left: 0;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border);
+            color: var(--text-primary);
+            padding: 6px 10px;
+            border-radius: 6px;
+            white-space: pre-wrap;
+            width: max-content;
+            max-width: 420px;
+            box-shadow: 0 4px 14px rgba(0,0,0,0.5);
+            font-size: 0.84rem;
+            font-weight: 400;
+            z-index: 100;
+            line-height: 1.4;
+        }
         .exam-summary .pill.rtc {
             background: rgba(34,197,94,0.18);
             border-color: rgba(34,197,94,0.4);
@@ -2040,29 +2068,24 @@
                         if (p.painPlanSummary && PAIN_PROCS.includes(it.name)) return false;
                         return true;
                     });
-                    // 手動摘要 chip（hover 顯示全文）
-                    const truncate = (s, n) => (s.length > n ? s.slice(0, n).trim() + '…' : s);
+                    // 手動摘要 chip — hover popover 顯示完整原文（含換行）
                     const manualChips = [
-                        p.bonePlanSummary ? `<span class="pill" title="${escapeAttr(p.bonePlanSummary)}" style="background: rgba(168,85,247,0.2); border-color: rgba(168,85,247,0.4); color: #d8b4fe;">🦴 ${escapeHtml(truncate(p.bonePlanSummary.replace(/\n/g, ' '), 30))}</span>` : '',
-                        p.painPlanSummary ? `<span class="pill" title="${escapeAttr(p.painPlanSummary)}" style="background: rgba(236,72,153,0.2); border-color: rgba(236,72,153,0.4); color: #fbcfe8;">💢 ${escapeHtml(truncate(p.painPlanSummary.replace(/\n/g, ' '), 30))}</span>` : ''
+                        p.bonePlanSummary ? `<span class="pill expandable" data-full="${escapeAttr(p.bonePlanSummary)}" style="background: rgba(168,85,247,0.2); border-color: rgba(168,85,247,0.4); color: #d8b4fe;">🦴 ${escapeHtml(p.bonePlanSummary.replace(/\n/g, ' '))}</span>` : '',
+                        p.painPlanSummary ? `<span class="pill expandable" data-full="${escapeAttr(p.painPlanSummary)}" style="background: rgba(236,72,153,0.2); border-color: rgba(236,72,153,0.4); color: #fbcfe8;">💢 ${escapeHtml(p.painPlanSummary.replace(/\n/g, ' '))}</span>` : ''
                     ].filter(Boolean).join('');
-                    // Procedure auto-summary（done×N，計畫中另外標）+ hover 顯示日期 + NHI/self
+                    // Procedure auto-summary chip — popover 顯示完整日期 / NHI
                     const summaryPills = manualChips + [
                         ...filteredItems.map(it => {
-                            const planNote = it.planned ? `<span style="opacity:0.7;font-size:0.65rem"> +${it.planned}計</span>` : '';
-                            // 若 done 都同一付款型，chip 直接顯示
+                            const planNote = it.planned ? ` +${it.planned}計` : '';
                             const donePayments = (it.dates || []).filter(d => d.kind === 'done').map(d => d.payment).filter(Boolean);
                             const samePay = donePayments.length === it.done && donePayments.length && donePayments.every(p => p === donePayments[0]);
                             const payTag = samePay ? ` ${donePayments[0]}` : '';
-                            const main = it.done ? `${escapeHtml(it.name)}×${it.done}${escapeHtml(payTag)}` : `${escapeHtml(it.name)} 計${it.planned}`;
-                            const datesText = (it.dates || []).map(d => {
-                                const pay = d.payment ? `${d.payment} ` : '';
-                                return `${pay}${d.date || '-'} (${d.kind === 'planned' ? '計' : '已'})`;
-                            }).join('\n');
-                            const tip = `已完成 ${it.done}, 計畫中 ${it.planned}` + (datesText ? `\n────\n${datesText}` : '');
-                            return `<span class="pill" title="${escapeAttr(tip)}">${main}${planNote}</span>`;
+                            const main = it.done ? `${escapeHtml(it.name)}×${it.done}${escapeHtml(payTag)}${escapeHtml(planNote)}` : `${escapeHtml(it.name)} 計${it.planned}`;
+                            const fullText = `${it.name} (已 ${it.done}, 計 ${it.planned})\n` +
+                                (it.dates || []).map(d => `  ${d.payment ? d.payment + ' ' : ''}${d.date || '-'} ${d.kind === 'planned' ? '(計畫)' : '(已完成)'}`).join('\n');
+                            return `<span class="pill expandable" data-full="${escapeAttr(fullText)}">${main}</span>`;
                         }),
-                        summary.hasMultiRTC ? `<span class="pill warn" title="${escapeAttr(summary.rtcDates.join('\n'))}">多 RTC ${summary.rtcDates.length}</span>` : '',
+                        summary.hasMultiRTC ? `<span class="pill warn expandable" data-full="${escapeAttr('多 RTC 日期：\n' + summary.rtcDates.join('\n'))}">多 RTC ${summary.rtcDates.length}</span>` : '',
                         summary.isSelfRTC ? `<span class="pill warn">自我約診</span>` : ''
                     ].filter(Boolean).join('');
                     return `
