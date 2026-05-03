@@ -1,0 +1,57 @@
+# Claude 工作交接 — 只供本地參考，不公開
+HANDOFF.md
+CLAUDE_RESUME.md
+CLAUDE.md
+
+# Backup files
+*.backup-*
+index.html.backup-*
+
+# 病人真實資料（含病歷號、姓、計畫）— 絕對不上 GitHub
+*OPD*.docx
+*Procedure list*.docx
+*Procedure_list*.docx
+OPD.txt
+
+# Python 解析輸出（含真實病歷號 + plan）
+parsed_opd*.json
+Source/
+source/
+
+# Python parser scripts（不需要 push）
+parse_*.py
+
+# 設計探索 / demo 資料（含 cases-data.jsx 的範例 chartNo）
+cases-data.jsx
+cases-app.jsx
+Case List Mobile.html
+ios-frame.jsx
+*-data.jsx
+*-app.jsx
+
+# 衛教/醫療參考頁面（含個案資料可能）
+*微細動脈*.html
+*TAME*.html
+
+# stand.html — 另一獨立 app，未確認 PHI 狀態（保險先 ignore）
+stand.html
+
+# 各種衛教/簡報原稿（部分含個案）
+*衛教*.pdf
+*pain clinic*.pdf
+*疼痛*.pptx
+*疼痛*.pdf
+
+# 衛教 docx 輸出
+介入性疼痛*.docx
+self intro.txt
+
+# 開發工具暫存
+extracted_images/
+build_docx*.py
+.claude/
+
+# OS / IDE
+~$*
+.DS_Store
+Thumbs.db
