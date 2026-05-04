@@ -2852,6 +2852,24 @@
         document.getElementById('history-modal').classList.remove('show');
     }
 
+    // history-modal 點外面（離 modal 邊界 60px 外）自動關閉；60px buffer 內不關（防誤關）
+    (function bindHistoryOverlayClose() {
+        const overlay = document.getElementById('history-modal');
+        if (!overlay) return;
+        overlay.addEventListener('click', (e) => {
+            // 只在 click target 是 overlay 自己時觸發（不在 modal 內元素）
+            if (e.target !== overlay) return;
+            const modalEl = overlay.querySelector('.modal');
+            if (!modalEl) return;
+            const r = modalEl.getBoundingClientRect();
+            const buffer = 60;
+            const x = e.clientX, y = e.clientY;
+            const inside = x >= r.left - buffer && x <= r.right + buffer
+                        && y >= r.top - buffer  && y <= r.bottom + buffer;
+            if (!inside) closeHistoryModal();
+        });
+    })();
+
     // 依 procedure 類別生成摘要文字（從 v-plan textarea 讀，給 modal 用）
     // 只取 done 事件（已執行）；不顯示 planned（未來計畫），避免老 visit 摘要出現未來資料
     function generateSummaryByCategory(procFilter) {
