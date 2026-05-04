@@ -633,7 +633,7 @@
 
         /* 欄寬 */
         .col-num    { width: 36px; text-align: center; }
-        .col-record { width: 95px; }
+        .col-record { width: 85px; }
         .visit-table tbody td.col-record { white-space: nowrap; overflow: hidden; }
         .visit-table tbody td.col-record .record-line {
             overflow: hidden;
@@ -652,7 +652,7 @@
             text-overflow: ellipsis;
         }
         .visit-table tbody td.col-record .ref-line { font-size: 0.74rem; color: var(--text-primary); font-style: italic; margin-top: 1px; }
-        .col-labs   { width: 100px; font-size: 0.85rem; }
+        .col-labs   { width: 88px; font-size: 0.85rem; }
         .col-extra  { width: 140px; font-size: 0.88rem; }
         .col-exam   { width: 160px; font-size: 0.88rem; }
         .visit-table tbody td.col-extra,
