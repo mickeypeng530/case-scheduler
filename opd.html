@@ -2528,18 +2528,15 @@
         const visit = (state.visitsByDate?.[date] || {})[recordNumber];
         const p = state.patients[recordNumber] || {};
         if (!visit) return;
-        // 在 plan 末尾插 [本次] anchor，方便貼到下次 visit modal 後 user 在此寫今天內容
-        // tag detector 會以 [本次] 為 scope 起點 → 自動偵測本次 procedure
-        const planWithAnchor = visit.plan ? `${visit.plan}\n\n[本次]\n` : '[本次]\n';
         const lines = [
             `${visit.orderInClinic || ''} | ${visit.recordNumber} (${p.surname || ''}) | ${p.ageSex || ''} | eGFR ${p.eGFR || ''} ${p.INR ? '| INR ' + p.INR : ''}`,
             p.extra ? `額外: ${p.extra}` : '',
             visit.examEducation ? `Exam: ${visit.examEducation}` : '',
-            `Plan:\n${planWithAnchor}`
+            visit.plan ? `Plan:\n${visit.plan}` : ''
         ].filter(Boolean).join('\n');
         navigator.clipboard.writeText(lines).then(() => {
-            setStatus('connected', '已複製到剪貼簿（含 [本次] anchor）');
-            setTimeout(() => setStatus('connected', '已連線'), 2000);
+            setStatus('connected', '已複製到剪貼簿');
+            setTimeout(() => setStatus('connected', '已連線'), 1500);
         });
     }
 
@@ -2921,6 +2918,8 @@
         const isEdit = !!recordNumber;
         const visit = isEdit ? ((state.visitsByDate?.[date] || {})[recordNumber] || {}) : {};
         const patient = isEdit ? (state.patients[recordNumber] || {}) : {};
+        // reset auto-ditto guard：新開 modal → 允許 chartNo blur 自動 ditto 一次
+        state._dittoLastRec = null;
 
         // 顯示 watermark：visit 日期淡淡浮在 modal 上方，避免 user 忘記在哪天
         const wm = document.getElementById('visit-modal-watermark');
@@ -3184,7 +3183,22 @@
             renderVisitTagPicker(state.visitTagsTemp);
         });
 
-        // 📋 ditto 前次：載入該病人前次 visit 的 plan，包裝後貼進 textarea
+        // 病歷號 blur：新增病人時自動觸發一次 ditto（載入前次門診全部資料）
+        // 條件：原本是空 record（state.editingVisitRecord 為 null），且輸入了新的 chartNo
+        document.getElementById('v-record-number').addEventListener('blur', () => {
+            // 編輯既有 visit 不觸發
+            if (state.editingVisitRecord) return;
+            const rec = document.getElementById('v-record-number').value.trim();
+            if (!rec || rec.length < 5) return;
+            // 已自動 ditto 過、避免重複
+            if (state._dittoLastRec === rec) return;
+            state._dittoLastRec = rec;
+            // 觸發 ditto button
+            document.getElementById('v-ditto-prev-btn')?.click();
+        });
+
+        // 📋 ditto 前次：載入該病人前次 visit 的 plan + patient master 全部欄位
+        // [本次] anchor 放頂、老 plan 加 [前次 MM-DD] 分隔線移到底下
         document.getElementById('v-ditto-prev-btn')?.addEventListener('click', async () => {
             const rec = document.getElementById('v-record-number').value.trim();
             const date = state.currentClinicDate;
@@ -3195,32 +3209,53 @@
                 const allDates = Object.keys(idxSnap.val() || {}).filter(d => d < date).sort();
                 if (allDates.length === 0) { alert(`病歷號 ${rec} 沒有 < ${date} 的就診紀錄`); return; }
                 const prevDate = allDates[allDates.length - 1];
-                const prevSnap = await get(ref(fbDb, `opd/visits/${prevDate}/${rec}`));
+                const [prevSnap, ptSnap] = await Promise.all([
+                    get(ref(fbDb, `opd/visits/${prevDate}/${rec}`)),
+                    get(ref(fbDb, `opd/patients/${rec}`))
+                ]);
                 const prev = prevSnap.val();
-                if (!prev) { alert(`找不到 ${prevDate} 的 visit 資料`); return; }
-                const prevPlan = (prev.plan || '').trim();
-                const prevExam = (prev.examEducation || '').trim();
-                if (!prevPlan && !prevExam) { alert(`前次 visit (${prevDate}) 沒有 plan/exam 內容`); return; }
-                // 包裝：頭部標前次日期、底部加 [本次] anchor
+                const pt = ptSnap.val() || state.patients[rec] || {};
+                if (!prev && !pt) { alert(`找不到 ${rec} 的資料`); return; }
+
+                // === 1. Patient master 欄位（只在欄位空時填，避免覆蓋 user 已輸入）===
+                const fillIfEmpty = (id, val) => {
+                    const el = document.getElementById(id);
+                    if (el && !el.value.trim() && val) el.value = val;
+                };
+                fillIfEmpty('v-surname', pt.surname);
+                fillIfEmpty('v-age-sex', displayAgeSex(pt, date) || pt.ageSex);
+                fillIfEmpty('v-referrer', pt.referrer);
+                fillIfEmpty('v-labs', pt.labs);
+                fillIfEmpty('v-bone-score', pt.boneScore);
+                fillIfEmpty('v-past-history', pt.pastHistory ?? pt.extra);
+                fillIfEmpty('v-bone-summary', pt.bonePlanSummary);
+                fillIfEmpty('v-pain-summary', pt.painPlanSummary);
+                // 抗凝
+                if (pt.anticoagState) {
+                    document.getElementById('v-anticoag-state').value = pt.anticoagState;
+                    document.getElementById('v-anticoag-list').style.display = (pt.anticoagState === 'yes') ? '' : 'none';
+                    if (pt.anticoagulants?.length) {
+                        document.getElementById('v-anticoag-list').value = pt.anticoagulants.join(', ');
+                    }
+                }
+
+                // === 2. Plan 段落：直接載入前次 plan（不加 [本次] anchor，user 自己決定要不要加）===
+                const prevPlan = (prev?.plan || '').trim();
+                const prevExam = (prev?.examEducation || '').trim();
                 const ta = document.getElementById('v-plan');
                 const existing = ta.value.trim();
-                let composed = '';
-                if (prevPlan) composed += `[前次 ${prevDate.slice(5)}]\n${prevPlan}\n\n`;
-                composed += '[本次]\n';
-                if (existing) composed = existing + '\n\n' + composed;
-                if (existing && !confirm('已有 plan 內容，覆蓋還是接續？\n\n按「確定」= 接續貼到末尾\n按「取消」= 不動')) {
-                    return;
+                if (prevPlan) {
+                    if (existing && !confirm(`v-plan 已有內容。\n\n按「確定」= 覆蓋為前次 ${prevDate.slice(5)} plan\n按「取消」= 保留現有不動`)) {
+                        // 仍填欄位但不動 plan
+                    } else {
+                        ta.value = prevPlan;
+                    }
                 }
-                ta.value = composed;
+                if (prevExam) fillIfEmpty('v-exam', prevExam);
                 ta.focus();
-                // 把游標移到 [本次] 行末
-                const anchorIdx = composed.indexOf('[本次]');
-                if (anchorIdx >= 0) {
-                    const cursorPos = anchorIdx + '[本次]\n'.length;
-                    ta.selectionStart = ta.selectionEnd = cursorPos;
-                }
-                // trigger blur 觸發 auto-detect tags
                 ta.dispatchEvent(new Event('blur'));
+                setStatus('connected', `✓ ditto 從 ${prevDate} 載入完成`);
+                setTimeout(() => setStatus('connected', '已連線'), 2000);
             } catch (e) {
                 alert('ditto 失敗：' + (e.message || e));
             }
@@ -4534,10 +4569,12 @@
             if (!loose) return new Set();   // 嚴格模式：找不到 scope 就不亂猜
             scope = lines;                   // loose 模式：掃全部行（fallback）
         } else {
-            // 找 scope end：start 之後第一個明確日期 > dateStr 的行
+            // 找 scope end：第一個 [前次] / [前次 ...] marker，OR 第一個明確日期 > dateStr 的行
             let endIdx = lines.length;
             for (let i = startIdx + 1; i < lines.length; i++) {
-                const ld = parseLineDate(lines[i], dateStr);
+                const line = lines[i];
+                if (/\[前次/.test(line) || /──+\s*前次/.test(line)) { endIdx = i; break; }
+                const ld = parseLineDate(line, dateStr);
                 if (ld && ld > dateStr) { endIdx = i; break; }
             }
             scope = lines.slice(startIdx, endIdx);
@@ -4748,10 +4785,14 @@
     // 支援兩種格式：
     //  1. Tab 分隔單列（從表格複製）：序號\t病歷號(姓)\t年齡\teGFR\t...
     //  2. 換行分隔多行（每欄一行）：每行一個欄位
+    //  3. Pipe 格式（OPD「📋 複製」按鈕輸出）：${order} | ${rec} (${surname}) | ${ageSex} | eGFR ... 開頭
     function parsePastedRow(raw) {
         if (!raw || !raw.trim()) {
             return { ok: false, error: '請先貼上資料' };
         }
+        // 先試 pipe 格式
+        const piped = parseCopyButtonPipe(raw);
+        if (piped && piped.ok) return piped;
 
         const hasTabs = raw.includes('\t');
         if (hasTabs) {
@@ -4759,6 +4800,43 @@
         } else {
             return parseLineBased(raw);
         }
+    }
+
+    // 解析 OPD 「📋 複製」按鈕的輸出（pipe 分隔 header + 標籤段落）
+    function parseCopyButtonPipe(raw) {
+        const lines = raw.split(/\r?\n/).map(s => s.trim());
+        // 找第一個非空行
+        const firstNonEmpty = lines.find(l => l) || '';
+        // 嚴格 pattern：含 | 分隔的 header 行（至少要有 rec (姓) | ageSex | eGFR）
+        const m = firstNonEmpty.match(/^\s*(\d*)\s*\|\s*([A-Za-z]?\d{5,8})\s*(?:\(([^)]+)\))?\s*\|\s*([^|]+?)\s*\|\s*eGFR\s*([^|]*?)\s*(?:\|\s*INR\s*(.+))?\s*$/i);
+        if (!m) return null;
+        const [, orderStr, rec, surname, ageSex, eGFRRaw, INRRaw] = m;
+        // 找標籤段落
+        let extra = '', exam = '', plan = '';
+        const planIdx = lines.findIndex(l => /^Plan:\s*$/i.test(l));
+        if (planIdx >= 0) {
+            plan = lines.slice(planIdx + 1).join('\n').trim();
+        }
+        lines.forEach(l => {
+            if (/^額外[:：]/.test(l)) extra = l.replace(/^額外[:：]\s*/, '').trim();
+            else if (/^Exam[:：]/i.test(l)) exam = l.replace(/^Exam[:：]\s*/i, '').trim();
+        });
+        return {
+            ok: true,
+            mode: 'pipe',
+            order: orderStr ? parseInt(orderStr, 10) : null,
+            recordNumber: rec,
+            surname: (surname || '').trim().replace(/\s+/g, ''),
+            ageSex: ageSex.trim(),
+            eGFR: eGFRRaw.trim(),
+            INR: INRRaw ? INRRaw.trim() : '',
+            INRDate: '',
+            extra,
+            tags: [],
+            exam,
+            plan,
+            partsCount: lines.length
+        };
     }
 
     const RECORD_PATTERN = /^\s*([A-Za-z]?\d{5,8})\s*(?:\(([^)]+)\))?\s*$/;
