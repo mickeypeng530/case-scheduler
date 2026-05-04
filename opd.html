@@ -4735,7 +4735,7 @@
                 <div class="pt-card" data-record="${escapeAttr(p.recordNumber)}">
                     <div class="pt-info">
                         <div class="pt-line1">
-                            ${escapeHtml(p.recordNumber)}${p.surname ? ` (${escapeHtml(p.surname)})` : ''}
+                            <span class="record-line clickable" data-history="${escapeAttr(p.recordNumber)}" title="點擊查看歷次門診">${escapeHtml(p.recordNumber)}${p.surname ? ` (${escapeHtml(p.surname)})` : ''}</span>
                             <span class="pt-tags">${tags}</span>
                         </div>
                         <div class="pt-line2">${escapeHtml(p.ageSex || '')}${egfrPart}${inrPart}</div>
@@ -5195,6 +5195,12 @@
 
         // 病人卡片點擊（編輯）
         document.getElementById('patient-master-list').addEventListener('click', (e) => {
+            // 點病歷號/姓名 → 開歷次門診 modal
+            const histTrigger = e.target.closest('[data-history]');
+            if (histTrigger) {
+                openPatientHistory(histTrigger.dataset.history);
+                return;
+            }
             const editBtn = e.target.closest('button[data-action="edit"]');
             if (editBtn) {
                 openPatientModal(editBtn.dataset.record);
