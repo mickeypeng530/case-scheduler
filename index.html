@@ -2413,8 +2413,29 @@
                 if (modal && handle) initDraggable(modal, handle);
                 caselistDragInited = true;
             }
+            // 滾到今日案例位置（找不到 → 找 ≥ 今日最近的；都沒有就不動）
+            scrollCaselistToToday();
             // 自動填補所有缺 ageSex 的 row（從 OPD 主表 / 同 list 同病歷號）
             await autoFillAllMissingAgeSex();
+        }
+
+        function scrollCaselistToToday() {
+            const wrap = document.getElementById('caselist-table-wrap');
+            if (!wrap) return;
+            const today = formatDateForInput(new Date());
+            // 桌機：tr[data-date]；手機：.v4-date-group[data-date]
+            const isMobile = window.innerWidth <= 768;
+            const candidates = isMobile
+                ? Array.from(wrap.querySelectorAll('.v4-date-group[data-date]'))
+                : Array.from(wrap.querySelectorAll('tr[data-date]'));
+            if (candidates.length === 0) return;
+            // 找今日；沒今日就找 ≥ today 最早一筆；都沒就用最後一筆
+            let target = candidates.find(el => el.dataset.date === today);
+            if (!target) target = candidates.find(el => el.dataset.date >= today);
+            if (!target) target = candidates[candidates.length - 1];
+            if (target) {
+                setTimeout(() => target.scrollIntoView({ behavior: 'smooth', block: 'start' }), 80);
+            }
         }
 
         // 開啟 modal 時掃整張 list，凡有 chartNo 但缺 ageSex 的 row → 自動填
@@ -2838,7 +2859,7 @@
                             ${srcIconHtml}
                         </div>`;
                 }
-                return `<tr class="${rowCls}" data-id="${c.id}">
+                return `<tr class="${rowCls}" data-id="${c.id}" data-date="${esc(c.date || '')}">
                     <td data-mlabel="日期"><span class="date-cell" style="font-size:0.78rem; color:var(--text-secondary);">${esc(c.date || '')}</span></td>
                     <td data-mlabel="時間"><input type="text" data-field="time" value="${esc(c.time)}" placeholder="13:00" pattern="[0-9]{1,2}:[0-9]{2}" maxlength="5" style="text-align:center;"></td>
                     <td data-mlabel="病歷號"><input type="text" data-field="chartNo" value="${esc(c.chartNo)}" placeholder="病歷號" data-trigger-fill="1"></td>
@@ -2930,7 +2951,7 @@
             const dateKeys = Object.keys(byDate).sort();
             const mobileGroups = dateKeys.map(date => {
                 const dateShort = date.slice(5);
-                return `<div class="v4-date-group">
+                return `<div class="v4-date-group" data-date="${esc(date)}">
                     <div class="v4-date-header"><span class="v4-date-big">${esc(dateShort)}</span></div>
                     <div class="v4-cards">${byDate[date].map(c => c.status === 'pending' ? renderV4Pending(c) : renderV4Closed(c)).join('')}</div>
                 </div>`;
