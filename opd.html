@@ -345,9 +345,9 @@
             <div class="field inline" title="抗凝劑 / 抗血小板（病人主表）">
                 <label>抗凝</label>
                 <select id="v-anticoag-state" style="flex: 0 0 auto; width: auto;">
-                    <option value="unknown">未確認</option>
-                    <option value="none">無</option>
-                    <option value="yes">有</option>
+                    <option value="unknown">❓ 待確認</option>
+                    <option value="none">✓ 無</option>
+                    <option value="yes">🩸 有</option>
                 </select>
                 <input type="text" id="v-anticoag-list" list="anticoag-options" placeholder="藥名" style="flex: 1; min-width: 0; display: none;">
             </div>
@@ -1778,19 +1778,20 @@
                     return `<div class="extra-content ${cls}" data-record="${escapeAttr(v.recordNumber)}" data-full="${escapeAttr(plainParts.join('\n'))}">${parts.join('<br>')}</div>`;
                 })()}</td>
                 <td class="col-exam">${(() => {
-                    const needs = visitNeedsAnticoagCheck(v);
+                    // 顯示 anticoag：
+                    //   1. 'yes' + 有藥名 → 永遠顯（任何 visit）
+                    //   2. 'none' / 'unknown' → 病人有 procedure 歷史 OR 當次有 procedure tag 才顯
+                    //      → 純骨鬆 patient 不顯 no / ?
+                    const everProc = patientHasProcedureHistory(p) || visitNeedsAnticoagCheck(v);
                     let acIcon = '';
                     if (p.anticoagState === 'yes' && (p.anticoagulants || []).length) {
-                        // 有抗凝藥：chip 顯示藥名（簡潔），hover 跳紫色 popover 顯示 hold 天數
                         const drugNames = (p.anticoagulants || []).map(escapeHtml).join('/');
                         const holdInfo = (p.anticoagulants || []).map(d => `${d} hold ${getAnticoagHold(d)}`).join('\n');
                         acIcon = `<span class="ac-icon ac-yes pill expandable" data-full="${escapeAttr(holdInfo)}"><span class="pill-text">🩸 ${drugNames}</span></span>`;
-                    } else if (needs && p.anticoagState === 'none') {
-                        // 只在本次有 CT NB / TAME / pRF 時，秀「✅ 已確認無」
-                        acIcon = `<span class="ac-icon ac-none" title="已確認無抗凝">✅ 無抗凝</span>`;
-                    } else if (needs) {
-                        // 未確認，且本次有 CT NB / TAME / pRF
-                        acIcon = `<span class="ac-icon ac-unknown" title="未確認抗凝劑使用情況；本次有 CT NB / TAME / pRF，請於門診確認">⚠️ 未確認抗凝</span>`;
+                    } else if (everProc && p.anticoagState === 'none') {
+                        acIcon = `<span class="ac-icon ac-none" title="已確認無抗凝">✓ 無</span>`;
+                    } else if (everProc) {
+                        acIcon = `<span class="ac-icon ac-unknown" title="病人有 procedure 歷史，請確認抗凝劑使用">❓ 待確認</span>`;
                     }
                     // 過濾掉手動已涵蓋的類別 (auto chip 智能過濾)；MRI 不秀於本次概況
                     const filteredItems = summary.items.filter(it => {
@@ -2766,9 +2767,20 @@
         return key ? ANTICOAG_HOLD_DAYS[key] : '?';
     }
     // 本次 visit 是否需要「確認抗凝」（只 CT NB / TAME / pRF；SONO 不需要）
+    // 此 visit 是否含侵入性 procedure tag
     function visitNeedsAnticoagCheck(v) {
-        const ps = v?.procedureStatuses || {};
-        return ['CT NB', 'TAME', 'pRF'].some(k => ps[k]);
+        const procTags = ['CT NB', 'pRF', 'SONO', 'TAME', 'cTAME', 'sTAME', 'HA', 'PRP', 'BMA'];
+        const tags = (v?.tags || []).map(normalizeTag);
+        return tags.some(t => procTags.includes(t));
+    }
+    // 病人歷史是否有過 procedure（用 painPlanSummary / patient.tags 推斷）
+    function patientHasProcedureHistory(p) {
+        if (!p) return false;
+        if (p.painPlanSummary && p.painPlanSummary.trim()) return true;
+        if (p.painSummaryEdited) return true;   // 編輯過（即使空也算處理過）
+        const procTags = ['CT NB', 'pRF', 'SONO', 'TAME', 'cTAME', 'sTAME', 'HA', 'PRP', 'BMA'];
+        const ptTags = (p.tags || []).map(normalizeTag);
+        return ptTags.some(t => procTags.includes(t));
     }
 
     function renderProcedurePicker(statuses) {
