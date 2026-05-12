@@ -2638,7 +2638,7 @@
         // 找該 case 的 visit A（plan 來源）：
         //   1. caseDate 那天有 visit（門診日=執行日）
         //   2. patientVisitIndex 中 ≤ caseDate 的最近一筆
-        //   3. fallback：嘗試 leading-0 的 rec 變體（052158 ↔ 52158）
+        //   3. fallback：嘗試 leading-0 的 rec 變體（0XXXXXX ↔ XXXXXX）
         // rec 變體：嘗試 leading-0 add/remove 對應
         function recVariants(rec) {
             const list = [rec];
