@@ -1655,6 +1655,22 @@
         const tagPills = Object.entries(tagCounts)
             .filter(([_, n]) => n > 0)
             .map(([t, n]) => `<span class="tag-chip ${t === activeStatTag ? 'active' : ''}" data-stat-tag="${escapeAttr(t)}" data-tag="${escapeAttr(t)}">${escapeHtml(t)} ${n}</span>`).join('');
+
+        // === 回診日統計 ===
+        const rtcExpanded = !!state.rtcStatsExpanded;
+        const rtcDateExpanded = state.rtcDateExpanded || '';
+        const rtcMap = {};  // { 'YYYY-MM-DD': [visit, ...] }
+        came.forEach(v => {
+            if (v.propagatedTo && /^\d{4}-\d{2}-\d{2}$/.test(v.propagatedTo)) {
+                (rtcMap[v.propagatedTo] = rtcMap[v.propagatedTo] || []).push(v);
+            }
+        });
+        const rtcDatesSorted = Object.keys(rtcMap).sort();
+        const totalRtc = rtcDatesSorted.reduce((s, d) => s + rtcMap[d].length, 0);
+        const rtcChip = totalRtc > 0
+            ? `<span class="tag-chip ${rtcExpanded ? 'active' : ''}" data-action="rtc-stats" style="background: rgba(168,85,247,0.25); color: #d8b4fe; border: 1px solid rgba(168,85,247,0.4);">回診日 ${totalRtc}</span>`
+            : '';
+
         let statTagPanelHtml = '';
         if (activeStatTag) {
             const matched = came.filter(v => (v.tags || []).map(normalizeTag).includes(activeStatTag));
@@ -1698,14 +1714,59 @@
                 ${rows}
             </div>`;
         }
+
+        // 回診日統計 panel（兩層展開）
+        let rtcPanelHtml = '';
+        if (rtcExpanded && rtcDatesSorted.length > 0) {
+            const dayNames = ['日','一','二','三','四','五','六'];
+            const dateChips = rtcDatesSorted.map(d => {
+                const dt = new Date(d + 'T00:00');
+                const md = `${dt.getMonth() + 1}/${dt.getDate()}`;
+                const wd = dayNames[dt.getDay()];
+                const n = rtcMap[d].length;
+                const active = d === rtcDateExpanded;
+                return `<span class="tag-chip ${active ? 'active' : ''}" data-rtc-date="${escapeAttr(d)}" style="background: rgba(99,102,241,0.25); color: #c7d2fe; border: 1px solid rgba(99,102,241,0.4); cursor:pointer;">${md} (${wd}) ${n}</span>`;
+            }).join(' ');
+            let namesHtml = '';
+            if (rtcDateExpanded && rtcMap[rtcDateExpanded]) {
+                const dateLabel = (() => {
+                    const dt = new Date(rtcDateExpanded + 'T00:00');
+                    return `${dt.getMonth() + 1}/${dt.getDate()} (${dayNames[dt.getDay()]})`;
+                })();
+                namesHtml = `<div style="margin-top:6px; padding-top:6px; border-top:1px dashed var(--border);">
+                    <div style="font-size:0.78rem; color:var(--text-muted); margin-bottom:4px;">${escapeHtml(dateLabel)} 預約回診名單</div>
+                    ${rtcMap[rtcDateExpanded].sort((a,b) => (a.orderInClinic||999) - (b.orderInClinic||999)).map(v => {
+                        const p = state.patients[v.recordNumber] || {};
+                        const surname = p.surname ? String(p.surname).replace(/\s+/g, '') : '';
+                        const ageSex = displayAgeSex(p, date) || p.ageSex || '';
+                        const tags = [...new Set((v.tags || []).map(normalizeTag))]
+                            .map(t => `<span class="tag-chip" data-tag="${escapeAttr(t)}">${escapeHtml(t)}</span>`).join('');
+                        const orderNum = v.orderInClinic ? `#${v.orderInClinic}` : '#—';
+                        return `<div class="stp-row" data-jump-record="${escapeAttr(v.recordNumber)}" style="cursor:pointer;">
+                            <span class="stp-order" style="color:var(--text-muted); font-family:monospace; min-width:36px; display:inline-block;">${escapeHtml(orderNum)}</span>
+                            <span class="stp-rec">${escapeHtml(v.recordNumber)}</span>
+                            <span class="stp-name">${escapeHtml(surname)}${ageSex ? ` ${escapeHtml(ageSex)}` : ''}</span>
+                            <span class="stp-tags visit-tags">${tags}</span>
+                        </div>`;
+                    }).join('')}
+                </div>`;
+            }
+            rtcPanelHtml = `<div class="stat-tag-panel">
+                <div class="stp-title">本次門診預約回診日分布（${totalRtc} 位 / ${rtcDatesSorted.length} 個日期）— 點日期看名單</div>
+                <div style="display:flex; flex-wrap:wrap; gap:4px;">${dateChips}</div>
+                ${namesHtml}
+            </div>`;
+        }
+
         const statsHtml = `
             <div class="stats-bar">
                 <span>👤 <span class="stat-num">${came.length}</span> 人${dc.length ? `<span style="color:var(--color-dc);"> + DC ${dc.length}</span>` : ''}</span>
                 <span class="stat-divider"></span>
                 <span>已準備 <span class="stat-num">${prepared}</span> / 確認 <span class="stat-num">${confirmed}</span></span>
-                ${tagPills ? `<span class="stat-divider"></span><span class="stat-tags visit-tags">${tagPills}</span>` : ''}
+                ${tagPills ? `<span class="stat-divider"></span><span class="stat-tags visit-tags">${tagPills}${rtcChip ? ' ' + rtcChip : ''}</span>` : (rtcChip ? `<span class="stat-divider"></span><span class="stat-tags visit-tags">${rtcChip}</span>` : '')}
             </div>
             ${statTagPanelHtml}
+            ${rtcPanelHtml}
         `;
 
         // 排序：came / dc 已在 stats 區排好，DC 顯示用 noShow 變數
@@ -2681,6 +2742,22 @@
                 renderVisitList();
                 return;
             }
+            // 回診日統計 chip
+            const rtcAction = e.target.closest('[data-action="rtc-stats"]');
+            if (rtcAction) {
+                state.rtcStatsExpanded = !state.rtcStatsExpanded;
+                if (!state.rtcStatsExpanded) state.rtcDateExpanded = null;
+                renderVisitList();
+                return;
+            }
+            // 點某個 RTC 日期 chip → 展開該日預約名單
+            const rtcDate = e.target.closest('[data-rtc-date]');
+            if (rtcDate) {
+                const d = rtcDate.dataset.rtcDate;
+                state.rtcDateExpanded = (state.rtcDateExpanded === d) ? null : d;
+                renderVisitList();
+                return;
+            }
             const jumpRow = e.target.closest('[data-jump-record]');
             if (jumpRow && !e.target.closest('[data-tag]')) {
                 const rec = jumpRow.dataset.jumpRecord;
@@ -3211,6 +3288,14 @@
             if (idx >= 0) state.visitTagsTemp.splice(idx, 1);
             else state.visitTagsTemp.push(tag);
             renderVisitTagPicker(state.visitTagsTemp);
+        });
+
+        // chartNo input blur：自動轉大寫（避免 W12345 / w12345 變兩個 Firebase key）
+        ['v-record-number', 'pt-record-number'].forEach(id => {
+            const el = document.getElementById(id);
+            el?.addEventListener('blur', () => {
+                if (el.value) el.value = el.value.trim().toUpperCase();
+            });
         });
 
         // 病歷號 blur：新增病人時自動觸發一次 ditto（載入前次門診全部資料）
