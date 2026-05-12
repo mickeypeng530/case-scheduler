@@ -1657,13 +1657,19 @@
             .map(([t, n]) => `<span class="tag-chip ${t === activeStatTag ? 'active' : ''}" data-stat-tag="${escapeAttr(t)}" data-tag="${escapeAttr(t)}">${escapeHtml(t)} ${n}</span>`).join('');
 
         // === 回診日統計 ===
+        // RTC 來源優先順序：propagatedTo（已確定）→ plan 解析的 nextRTC（準備中也能看）
         const rtcExpanded = !!state.rtcStatsExpanded;
         const rtcDateExpanded = state.rtcDateExpanded || '';
         const rtcMap = {};  // { 'YYYY-MM-DD': [visit, ...] }
         came.forEach(v => {
+            let rtcDate = null;
             if (v.propagatedTo && /^\d{4}-\d{2}-\d{2}$/.test(v.propagatedTo)) {
-                (rtcMap[v.propagatedTo] = rtcMap[v.propagatedTo] || []).push(v);
+                rtcDate = v.propagatedTo;
+            } else {
+                const sum = summarizePlan(v.plan, date);
+                if (sum.nextRTC && /^\d{4}-\d{2}-\d{2}$/.test(sum.nextRTC)) rtcDate = sum.nextRTC;
             }
+            if (rtcDate) (rtcMap[rtcDate] = rtcMap[rtcDate] || []).push(v);
         });
         const rtcDatesSorted = Object.keys(rtcMap).sort();
         const totalRtc = rtcDatesSorted.reduce((s, d) => s + rtcMap[d].length, 0);
