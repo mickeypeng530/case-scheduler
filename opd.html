@@ -1541,8 +1541,14 @@
 
         const isSelfRTC = /\bself\s*RTC\b/i.test(plan);
 
+        // 預處理：「5/27 or 6/10 RTC」展開成「5/27 RTC or 6/10 RTC」讓兩個日期都被 match
+        // 支援 or / 或 / , / ， / / 等分隔
+        const planExpanded = plan.replace(
+            /(\d{1,2}\/\d{1,2})(\s*(?:or|或|,|，|\/|／)\s*)(\d{1,2}\/\d{1,2})(\s*RTC)/gi,
+            '$1$4$2$3$4'
+        );
         // RTC 日期（用 RTC_PATTERN，未來的）
-        const rtcMatches = [...plan.matchAll(RTC_PATTERN)];
+        const rtcMatches = [...planExpanded.matchAll(RTC_PATTERN)];
         const futureRTC = [];
         rtcMatches.forEach(m => {
             const yy = m[1] ? `20${m[1]}` : new Date(today).getFullYear().toString();
