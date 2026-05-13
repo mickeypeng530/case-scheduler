@@ -3425,8 +3425,62 @@
                 return lines;
             };
 
-            // 組 col 6 詳細 plan
-            // 優先順序：caselist.planScratch > OPD prev visit plan
+            // 智慧抽取 plan 段落：依 case type 篩
+            //   procedure: [當日 RTC 行] + [procedure detail 行] + [下次 RTC 行]
+            //   mri/arthro: 含 MRI/MR/arthro keyword 的行
+            //   other: 前 5 行
+            function extractPlanForCase(planText, caseDate, caseType) {
+                if (!planText) return [];
+                const lines = planText.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+                // mri / arthro：只抓含 keyword 的行
+                if (caseType === 'mri' || caseType === 'arthro') {
+                    const kw = caseType === 'mri' ? /\b(MRI|MR(?!\s*A))\b/i : /\b(arthro|MRA|joint)\b/i;
+                    return lines.filter(l => kw.test(l)).slice(0, 5);
+                }
+                if (caseType === 'other') return lines.slice(0, 5);
+                // procedure：找 thisRTC + nextRTC + 之間 detail
+                const cm = caseDate.getMonth() + 1;
+                const cd = caseDate.getDate();
+                const caseDateYMD = formatDateForInput(caseDate);
+                let thisRTCIdx = -1, nextRTCIdx = -1;
+                for (let i = 0; i < lines.length; i++) {
+                    if (!/\bRTC\b/i.test(lines[i])) continue;
+                    const dm = lines[i].match(/(?:\d{2}\/)?(\d{1,2})\/(\d{1,2})/);
+                    if (!dm) continue;
+                    const m = parseInt(dm[1], 10), d = parseInt(dm[2], 10);
+                    if (m === cm && d === cd && thisRTCIdx < 0) thisRTCIdx = i;
+                    else {
+                        const yy = caseDate.getFullYear();
+                        const lineDate = `${yy}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+                        if (lineDate > caseDateYMD && nextRTCIdx < 0) nextRTCIdx = i;
+                    }
+                }
+                // 決定 detail 範圍
+                let detailStart, detailEnd;
+                if (thisRTCIdx >= 0 && nextRTCIdx > thisRTCIdx) {
+                    detailStart = thisRTCIdx + 1;
+                    detailEnd = nextRTCIdx;
+                } else if (thisRTCIdx >= 0) {
+                    detailStart = thisRTCIdx + 1;
+                    detailEnd = Math.min(lines.length, thisRTCIdx + 5);
+                } else if (nextRTCIdx >= 0) {
+                    detailStart = Math.max(0, nextRTCIdx - 4);
+                    detailEnd = nextRTCIdx;
+                } else {
+                    detailStart = 0;
+                    detailEnd = Math.min(lines.length, 5);
+                }
+                const result = [];
+                if (thisRTCIdx >= 0) result.push(lines[thisRTCIdx]);
+                for (let i = detailStart; i < detailEnd; i++) {
+                    if (i === thisRTCIdx || i === nextRTCIdx) continue;
+                    result.push(lines[i]);
+                }
+                if (nextRTCIdx > thisRTCIdx) result.push(lines[nextRTCIdx]);
+                return result;
+            }
+
+            // 組 col 6 plan：caselist.planScratch > OPD ≤ caseDate 最近 visit plan
             const getPlanLines = (c) => {
                 const rec = (c.chartNo || '').trim();
                 const cl = caselistByChart[rec];
@@ -3437,8 +3491,7 @@
                     const cacheKey = `${rec}__${formatDateForInput(c.date)}`;
                     raw = prevVisits[cacheKey]?.plan || '';
                 }
-                if (!raw) return [];
-                return raw.split(/\r?\n/).filter(l => l.trim()).slice(0, 20);  // 最多 20 行
+                return extractPlanForCase(raw, c.date, c.type);
             };
 
             // === 建表 ===
