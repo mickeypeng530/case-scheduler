@@ -691,6 +691,7 @@
             .caselist-header > div { flex-wrap: wrap; gap: 4px; }
             #caselist-add-btn,
             #caselist-sync-btn,
+            #caselist-bulk-load-plan-btn,
             #caselist-status { display: none; }
 
             /* V4 — date group sticky header */
@@ -1662,7 +1663,7 @@
     <!-- 線上 case list -->
     <div class="modal-overlay" id="caselist-modal">
         <div class="modal-wrapper">
-        <div class="modal caselist-modal" style="max-width: 1200px; max-height: 90vh; display: flex; flex-direction: column;">
+        <div class="modal caselist-modal" style="width: 90vw; max-width: 1200px; height: 80vh; max-height: 95vh; min-width: 600px; min-height: 400px; resize: both; overflow: hidden; display: flex; flex-direction: column;">
             <div class="caselist-header" style="display:flex; justify-content:space-between; align-items:center; gap:10px; padding-bottom:8px; border-bottom:1px solid var(--border); cursor: move; user-select: none;">
                 <h3 style="margin:0;">📋 線上 case list <span style="font-size:0.7rem;color:var(--text-muted);font-weight:400;margin-left:4px;">（拖移標題列）</span></h3>
                 <div style="display:flex; gap:8px; align-items:center;">
@@ -1674,6 +1675,7 @@
                     </select>
                     <button id="caselist-add-btn" style="padding:5px 10px; background:var(--color-info); border:none; color:white; border-radius:4px; cursor:pointer; font-size:0.82rem;">+ 新增</button>
                     <button id="caselist-sync-btn" title="從目前排程拉新案例（不會刪 list 既有的）" style="padding:5px 10px; background:var(--bg-tertiary); border:1px solid var(--border); color:var(--text-primary); border-radius:4px; cursor:pointer; font-size:0.82rem;">🔄 同步排程</button>
+                    <button id="caselist-bulk-load-plan-btn" title="一次把區間內所有待做且 planScratch 為空的 row 都載入 visit A plan" style="padding:5px 10px; background:var(--bg-tertiary); border:1px solid var(--border); color:var(--text-primary); border-radius:4px; cursor:pointer; font-size:0.82rem;">⬇ 全部載入 plan</button>
                     <button id="caselist-close" style="padding:5px 10px; background:transparent; border:1px solid var(--border); color:var(--text-secondary); border-radius:4px; cursor:pointer; font-size:0.82rem;">✕ 關閉</button>
                 </div>
             </div>
@@ -2404,11 +2406,32 @@
             caselistTabId = tab.id;
             const overlay = document.getElementById('caselist-modal');
             overlay.classList.add('show');
+            // 回復上次手動 resize 過的尺寸
+            const modal = overlay.querySelector('.caselist-modal');
+            try {
+                const saved = JSON.parse(localStorage.getItem('caselistModalSize') || 'null');
+                if (saved?.w) modal.style.width = saved.w;
+                if (saved?.h) modal.style.height = saved.h;
+            } catch {}
+            // 監聽 resize → 存 localStorage
+            if (!modal.dataset.resizeBound) {
+                let resizeTimer;
+                const ro = new ResizeObserver(() => {
+                    clearTimeout(resizeTimer);
+                    resizeTimer = setTimeout(() => {
+                        localStorage.setItem('caselistModalSize', JSON.stringify({
+                            w: modal.style.width || `${modal.offsetWidth}px`,
+                            h: modal.style.height || `${modal.offsetHeight}px`
+                        }));
+                    }, 250);
+                });
+                ro.observe(modal);
+                modal.dataset.resizeBound = '1';
+            }
             // 第一次開：自動 sync 排程內案例（不刪 list 既有）
             syncCaselistFromCells(true);
             renderCaselist();
             if (!caselistDragInited) {
-                const modal = overlay.querySelector('.caselist-modal');
                 const handle = overlay.querySelector('.caselist-header');
                 if (modal && handle) initDraggable(modal, handle);
                 caselistDragInited = true;
@@ -2546,7 +2569,8 @@
             const list = getCaselistFor(tab.id);
             const start = new Date(tab.statsStartDate || tab.startDate);
             const end = new Date(tab.statsEndDate || tab.endDate);
-            let added = 0;
+            // 1. 蒐集所有 scheduler cell 內的 case（含 cellKey + position）
+            const schedCases = [];   // [{chartNo, type, otherSubtype, time, date, period, cellKey, idx}]
             for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
                 ['AM', 'PM'].forEach(period => {
                     const cellKey = `${formatDateForInput(d)}-${period}`;
@@ -2555,29 +2579,104 @@
                     const cases = Array.isArray(cellData.cases) ? cellData.cases : Object.values(cellData.cases || {});
                     cases.forEach((c, idx) => {
                         if (!c || !CASELIST_TYPES.includes(c.type) || c.isEmpty) return;
-                        const id = `cell_${cellKey}_${c.id || idx}`;
-                        if (list[id]) return; // 已存在 → 不覆蓋
-                        list[id] = {
-                            date: formatDateForInput(d),
-                            period,
-                            time: c.time || '',
-                            chartNo: c.chartNo || '',
-                            ageSex: '',
+                        schedCases.push({
+                            chartNo: (c.chartNo || '').trim(),
                             type: c.type || '',
                             otherSubtype: c.otherSubtype || '',
-                            status: 'pending',
-                            source: 'cell',
-                            sourceCellKey: cellKey,
-                            createdAt: Date.now()
-                        };
-                        added++;
+                            time: c.time || '',
+                            date: formatDateForInput(d),
+                            period,
+                            cellKey,
+                            idx,
+                            cellId: c.id
+                        });
                     });
                 });
             }
-            if (added > 0) saveToStorage();
+
+            // 2. 既有 caselist source='cell' rows
+            const cellRows = Object.entries(list).filter(([_, r]) => r.source === 'cell');
+            // 待 match 的 schedCase（被 match 後從這 set 移除）
+            const unmatchedSched = new Set(schedCases.map((_, i) => i));
+            let added = 0, reconciled = 0, orphans = 0;
+
+            // 3. 對每個 cellRow 嘗試 match scheduler case：
+            //    優先 (sourceCellKey + chartNo + type) 完全 match → 不動
+            //    其次 chartNo + type match（搬到新位置）→ update date/period/cellKey
+            //    都不 match → 標 orphan
+            cellRows.forEach(([rowId, row]) => {
+                // 找完全 match（同 cellKey 還有此案例）
+                let exactIdx = -1;
+                for (const i of unmatchedSched) {
+                    const s = schedCases[i];
+                    if (s.cellKey === row.sourceCellKey && s.chartNo === (row.chartNo || '').trim() && s.type === row.type) {
+                        exactIdx = i; break;
+                    }
+                }
+                if (exactIdx >= 0) {
+                    unmatchedSched.delete(exactIdx);
+                    // 同步 time（user 可能在 scheduler 改了時間）
+                    const s = schedCases[exactIdx];
+                    if (s.time && row.time !== s.time) row.time = s.time;
+                    // 清掉 orphan flag（如果之前有）
+                    if (row.orphan) { delete row.orphan; reconciled++; }
+                    return;
+                }
+                // 找 chartNo + type match（搬到別 cell）
+                let moveIdx = -1;
+                for (const i of unmatchedSched) {
+                    const s = schedCases[i];
+                    if (s.chartNo === (row.chartNo || '').trim() && s.chartNo && s.type === row.type) {
+                        moveIdx = i; break;
+                    }
+                }
+                if (moveIdx >= 0) {
+                    const s = schedCases[moveIdx];
+                    row.date = s.date;
+                    row.period = s.period;
+                    row.time = s.time || row.time;
+                    row.sourceCellKey = s.cellKey;
+                    if (row.orphan) delete row.orphan;
+                    unmatchedSched.delete(moveIdx);
+                    reconciled++;
+                    return;
+                }
+                // 找不到 match → 標 orphan
+                if (!row.orphan) { row.orphan = true; orphans++; }
+            });
+
+            // 4. 剩下未 match 的 schedCase → 加新 row
+            unmatchedSched.forEach(i => {
+                const s = schedCases[i];
+                const id = `cell_${s.cellKey}_${s.cellId || s.idx}`;
+                if (list[id]) {
+                    // ID 衝突（罕見）：給個新 unique ID
+                    const altId = `cell_${s.cellKey}_${s.idx}_${Date.now()}`;
+                    list[altId] = {
+                        date: s.date, period: s.period, time: s.time,
+                        chartNo: s.chartNo, ageSex: '', type: s.type, otherSubtype: s.otherSubtype,
+                        status: 'pending', source: 'cell', sourceCellKey: s.cellKey, createdAt: Date.now()
+                    };
+                } else {
+                    list[id] = {
+                        date: s.date, period: s.period, time: s.time,
+                        chartNo: s.chartNo, ageSex: '', type: s.type, otherSubtype: s.otherSubtype,
+                        status: 'pending', source: 'cell', sourceCellKey: s.cellKey, createdAt: Date.now()
+                    };
+                }
+                added++;
+            });
+
+            if (added > 0 || reconciled > 0 || orphans > 0) saveToStorage();
             if (!silent) {
                 const s = document.getElementById('caselist-status');
-                if (s) s.textContent = added > 0 ? `✓ 同步：新增 ${added} 筆` : '✓ 已是最新（無新增）';
+                if (s) {
+                    const parts = [];
+                    if (added > 0) parts.push(`新增 ${added}`);
+                    if (reconciled > 0) parts.push(`同步移動 ${reconciled}`);
+                    if (orphans > 0) parts.push(`⚠ 排程已移走 ${orphans}`);
+                    s.textContent = parts.length ? '✓ ' + parts.join(' · ') : '✓ 已是最新';
+                }
             }
         }
 
@@ -2688,6 +2787,55 @@
             } catch (e) {
                 statusEl.textContent = `載入失敗：${e.message}`;
                 return null;
+            }
+        }
+
+        // 一次載入區間內全部 case 的 plan（從 visit A 抓進 planScratch）
+        async function bulkLoadCaselistPlans() {
+            const tab = getActiveTab();
+            if (!tab) return;
+            const list = getCaselistFor(tab.id);
+            const startStr = formatDateForInput(new Date(tab.statsStartDate || tab.startDate));
+            const endStr = formatDateForInput(new Date(tab.statsEndDate || tab.endDate));
+            const statusEl = document.getElementById('caselist-status');
+            // 候選：區間內 + 待做 + 有 chartNo + planScratch 空
+            const targets = Object.entries(list).filter(([_, c]) =>
+                c.date >= startStr && c.date <= endStr
+                && c.status === 'pending'
+                && c.chartNo && c.chartNo.trim()
+                && !(c.planScratch || '').trim()
+            );
+            if (targets.length === 0) {
+                if (statusEl) statusEl.textContent = '✓ 全部 plan 已載入（或無需載入）';
+                return;
+            }
+            if (!confirm(`即將載入 ${targets.length} 筆 case 的 plan（只動 planScratch 為空的）。\n\n執行？`)) return;
+
+            let ok = 0, miss = 0, fail = 0;
+            for (let i = 0; i < targets.length; i++) {
+                const [id, c] = targets[i];
+                if (statusEl) statusEl.textContent = `載入中 ${i + 1}/${targets.length}（${c.chartNo}）...`;
+                try {
+                    const res = await caselistFindVisitA(c.chartNo.trim(), c.date);
+                    if (!res?.date || !res?.rec) { miss++; continue; }
+                    const planSnap = await get(ref(fbDb, `opd/visits/${res.date}/${res.rec}/plan`));
+                    const plan = planSnap.val() || '';
+                    if (!plan) { miss++; continue; }
+                    c.planScratch = plan;
+                    ok++;
+                } catch (e) {
+                    console.warn('bulkLoad', c.chartNo, e);
+                    fail++;
+                }
+            }
+            saveToStorage();
+            renderCaselist();
+            if (statusEl) {
+                const parts = [];
+                if (ok > 0) parts.push(`✓ 載入 ${ok}`);
+                if (miss > 0) parts.push(`找不到 ${miss}`);
+                if (fail > 0) parts.push(`失敗 ${fail}`);
+                statusEl.textContent = parts.join(' · ');
             }
         }
 
@@ -2834,7 +2982,8 @@
                 const isMri = c.type === 'mri';
                 const isArthro = c.type === 'arthro';
                 const dateAMd = c.date ? `${parseInt(c.date.slice(5,7))}/${parseInt(c.date.slice(8,10))}` : 'A';
-                const srcIconHtml = `<span class="${c.source === 'manual' ? 'src-manual' : 'src-cell'}" title="${c.source === 'manual' ? '手動建立' : '從排程同步'}" style="font-size:0.78rem; margin-left:auto;">${c.source === 'manual' ? '✏️' : '🔗'}</span>`;
+                const orphanChip = c.orphan ? `<span class="orphan-chip" title="原排程上找不到此案例（可能已被刪除或移到範圍外）" style="font-size:0.72rem; padding:1px 6px; background:rgba(148,163,184,0.18); color:#94a3b8; border:1px dashed rgba(148,163,184,0.5); border-radius:4px; margin-left:auto;">⚠ 排程已移走</span>` : '';
+                const srcIconHtml = `${orphanChip}<span class="${c.source === 'manual' ? 'src-manual' : 'src-cell'}" title="${c.source === 'manual' ? '手動建立' : '從排程同步'}" style="font-size:0.78rem; ${c.orphan ? 'margin-left:4px' : 'margin-left:auto'};">${c.source === 'manual' ? '✏️' : '🔗'}</span>`;
                 // Arthro：4 個結構化欄位（部位/體重/MRI/藥量）取代 textarea
                 let planCellHtml;
                 if (isArthro) {
@@ -3118,116 +3267,234 @@
                 alert('請先選擇一個分頁');
                 return;
             }
-            
-            // 使用統計區間（不是顯示區間）
+
             const statsStart = new Date(tab.statsStartDate || tab.startDate);
             const statsEnd = new Date(tab.statsEndDate || tab.endDate);
-            
-            // 收集所有案例（排除備註和不可用）
-            const allCases = [];
             const validTypes = ['ct-nb', 'ct-nb-prf', 'stame', 'ctame', 'sono', 'mri', 'arthro', 'other'];
-            
+
+            // 收集所有案例
+            const allCases = [];
             for (let d = new Date(statsStart); d <= statsEnd; d.setDate(d.getDate() + 1)) {
                 ['AM', 'PM'].forEach(period => {
                     const cellKey = `${formatDateForInput(d)}-${period}`;
                     const cellData = state.cellData[cellKey];
-                    if (cellData?.cases) {
-                        const cases = Array.isArray(cellData.cases) ? cellData.cases : Object.values(cellData.cases || {});
-                        cases.forEach(c => {
-                            if (c && validTypes.includes(c.type) && !c.isEmpty) {
-                                allCases.push({
-                                    ...c,
-                                    date: new Date(d),
-                                    period
-                                });
-                            }
-                        });
-                    }
+                    if (!cellData?.cases) return;
+                    const cases = Array.isArray(cellData.cases) ? cellData.cases : Object.values(cellData.cases || {});
+                    cases.forEach(c => {
+                        if (c && validTypes.includes(c.type) && !c.isEmpty) {
+                            allCases.push({ ...c, date: new Date(d), period });
+                        }
+                    });
                 });
             }
-            
-            // 按日期+時間排序
             allCases.sort((a, b) => {
-                const dateCompare = a.date - b.date;
-                if (dateCompare !== 0) return dateCompare;
+                const dc = a.date - b.date;
+                if (dc !== 0) return dc;
                 if (a.period !== b.period) return a.period === 'AM' ? -1 : 1;
                 return (a.time || '').localeCompare(b.time || '');
             });
-            
-            if (allCases.length === 0) {
-                alert('此區間內沒有案例可匯出');
-                return;
-            }
-            
-            // 建立表格
-            const { Document, Packer, Table, TableRow, TableCell, Paragraph, TextRun, WidthType, BorderStyle, ShadingType, AlignmentType } = docx;
-            
+            if (allCases.length === 0) { alert('此區間內沒有案例可匯出'); return; }
+
+            // 顯示進度（可能要 fetch 30+ OPD reads）
+            const statusEl = document.getElementById('caselist-status');
+            const setProgress = (t) => { if (statusEl) statusEl.textContent = t; };
+            setProgress(`匯出中：抓 OPD 資料... 0/${allCases.length}`);
+
+            // 建 caselist lookup（user 已 curate 的資料）
+            const tabCaselist = state.caseList[tab.id] || {};
+            const caselistByChart = {};
+            Object.values(tabCaselist).forEach(c => {
+                if (c.chartNo) caselistByChart[c.chartNo.trim()] = c;
+            });
+
+            // 批次抓 OPD patient 主表 + 該 case 最近 prev visit
+            const opdPatients = {};       // rec → patient (使用 rec 變體找到)
+            const prevVisits = {};        // rec_caseDate key → {plan, exam, date}
+            const promises = [];
+            allCases.forEach((c, i) => {
+                const rec = (c.chartNo || '').trim();
+                if (!rec) return;
+                const caseDateStr = formatDateForInput(c.date);
+                promises.push((async () => {
+                    // 1. OPD patient（試 rec 變體）
+                    if (!opdPatients[rec]) {
+                        for (const v of recVariants(rec)) {
+                            try {
+                                const snap = await get(ref(fbDb, `opd/patients/${v}`));
+                                if (snap.val()) { opdPatients[rec] = snap.val(); break; }
+                            } catch {}
+                        }
+                    }
+                    // 2. 找最近 prev visit
+                    const cacheKey = `${rec}__${caseDateStr}`;
+                    if (!prevVisits[cacheKey]) {
+                        const res = await caselistFindVisitA(rec, caseDateStr);
+                        if (res?.date && res?.rec) {
+                            try {
+                                const vs = await get(ref(fbDb, `opd/visits/${res.date}/${res.rec}`));
+                                const v = vs.val();
+                                if (v) prevVisits[cacheKey] = { date: res.date, plan: v.plan || '', exam: v.examEducation || '' };
+                            } catch {}
+                        }
+                    }
+                    setProgress(`匯出中：抓 OPD 資料... ${i + 1}/${allCases.length}`);
+                })());
+            });
+            await Promise.all(promises);
+
+            // 計算 ageSex
+            const getAgeSex = (c) => {
+                const rec = (c.chartNo || '').trim();
+                if (caselistByChart[rec]?.ageSex) return caselistByChart[rec].ageSex;
+                const p = opdPatients[rec];
+                if (p) {
+                    if (p.birthYear) return `${c.date.getFullYear() - p.birthYear}/${p.sex || ''}`;
+                    if (p.ageSex) return p.ageSex;
+                }
+                return '';
+            };
+
+            // 萃取 eGFR：先 patient.eGFR；否則從 patient.labs 解析（找 "eGFR" 數字）
+            const getEgfr = (rec) => {
+                const p = opdPatients[rec];
+                if (!p) return '';
+                if (p.eGFR) return String(p.eGFR).trim();
+                if (p.labs) {
+                    const m = p.labs.match(/eGFR[:：]?\s*([><]?\s*\d+(?:\.\d+)?)/i);
+                    if (m) return m[1].trim();
+                }
+                return '';
+            };
+
+            // 組 col 4 額外資訊（多行）
+            const getExtraLines = (rec) => {
+                const p = opdPatients[rec];
+                if (!p) return [];
+                const lines = [];
+                // 抗凝警示（優先顯示）
+                if (p.anticoagState === 'yes' && p.anticoagulants?.length) {
+                    lines.push(`🩸 ${p.anticoagulants.join(' / ')}`);
+                }
+                if (p.referrer) lines.push(p.referrer);
+                // INR
+                if (p.labs) {
+                    const m = p.labs.match(/INR[:：]?\s*(\d+(?:\.\d+)?)/i);
+                    if (m) lines.push(`INR: ${m[1]}`);
+                }
+                if (p.pastHistory) {
+                    // 慢性病史最多 2 行（過長截斷）
+                    const phLines = p.pastHistory.split(/\r?\n/).filter(l => l.trim());
+                    phLines.slice(0, 3).forEach(l => lines.push(l.trim().slice(0, 80)));
+                }
+                return lines;
+            };
+
+            // 組 col 6 詳細 plan
+            // 優先順序：caselist.planScratch > OPD prev visit plan
+            const getPlanLines = (c) => {
+                const rec = (c.chartNo || '').trim();
+                const cl = caselistByChart[rec];
+                let raw = '';
+                if (cl?.planScratch?.trim()) {
+                    raw = cl.planScratch.trim();
+                } else {
+                    const cacheKey = `${rec}__${formatDateForInput(c.date)}`;
+                    raw = prevVisits[cacheKey]?.plan || '';
+                }
+                if (!raw) return [];
+                return raw.split(/\r?\n/).filter(l => l.trim()).slice(0, 12);  // 最多 12 行
+            };
+
+            // === 建表 ===
+            const { Document, Packer, Table, TableRow, TableCell, Paragraph, TextRun, WidthType, BorderStyle, ShadingType } = docx;
             const border = { style: BorderStyle.SINGLE, size: 1, color: "000000" };
             const borders = { top: border, bottom: border, left: border, right: border };
-            
-            // 欄寬設定（總寬度約 9360 DXA）
-            const colWidths = [1200, 800, 600, 2000, 2000, 2760];
-            
-            // 建立表格列
-            const tableRows = allCases.map(c => {
+            // 6 欄寬：病歷號(姓) / 年齡性別 / eGFR / 額外 / 日期時間+procedure / Plan
+            const colWidths = [1100, 700, 600, 2100, 1500, 3360];   // 總 9360
+
+            // Header row
+            const headerCell = (text, w) => new TableCell({
+                borders,
+                width: { size: w, type: WidthType.DXA },
+                shading: { fill: "E5E7EB", type: ShadingType.CLEAR },
+                children: [new Paragraph({ children: [new TextRun({ text, size: 20, bold: true })] })]
+            });
+            const headerRow = new TableRow({
+                tableHeader: true,
+                children: [
+                    headerCell('病歷號 (姓)', colWidths[0]),
+                    headerCell('年齡/性別', colWidths[1]),
+                    headerCell('eGFR', colWidths[2]),
+                    headerCell('額外', colWidths[3]),
+                    headerCell('日期/時間/Procedure', colWidths[4]),
+                    headerCell('Plan', colWidths[5])
+                ]
+            });
+
+            const mkLineP = (text, opts = {}) => new Paragraph({
+                children: [new TextRun({ text, size: opts.size || 20, bold: !!opts.bold, color: opts.color })],
+                spacing: { before: 0, after: 0 }
+            });
+
+            const tableRows = [headerRow, ...allCases.map(c => {
+                const rec = (c.chartNo || '').trim();
+                const p = opdPatients[rec];
+                const surname = p?.surname ? String(p.surname).replace(/\s+/g, '') : '';
+                const col1 = surname ? `${rec} (${surname})` : rec;
+                const col2 = getAgeSex(c);
+                const col3 = getEgfr(rec);
+                const col4Lines = getExtraLines(rec);
                 const dateStr = `${String(c.date.getMonth() + 1).padStart(2, '0')}/${String(c.date.getDate()).padStart(2, '0')}`;
-                // Other 類型顯示子類型名稱
                 let typeLabel = exportTypeLabels[c.type] || c.type;
-                if (c.type === 'other' && c.otherSubtype) {
-                    typeLabel = c.otherSubtype;
-                }
+                if (c.type === 'other' && c.otherSubtype) typeLabel = c.otherSubtype;
                 const col5Text = `${dateStr} ${c.time || ''} ${typeLabel}`.trim();
-                
-                // 第3欄顏色：只有 MRI=紫色、Arthro=黃色，其他不加顏色
-                let col3Shading = null;
-                if (c.type === 'mri') col3Shading = { fill: "E6E6FA", type: ShadingType.CLEAR }; // 淺紫色
-                if (c.type === 'arthro') col3Shading = { fill: "FFFACD", type: ShadingType.CLEAR }; // 淺黃色
-                
-                // 第3欄 cell 設定
-                const col3Cell = {
+                const col6Lines = getPlanLines(c);
+
+                // 顏色：第 5 欄（procedure）依類型上色
+                let col5Shading = null;
+                if (c.type === 'mri') col5Shading = { fill: "E6E6FA", type: ShadingType.CLEAR };
+                else if (c.type === 'arthro') col5Shading = { fill: "FFFACD", type: ShadingType.CLEAR };
+
+                const col5CellSpec = {
                     borders,
-                    width: { size: colWidths[2], type: WidthType.DXA },
-                    children: [new Paragraph({ children: [] })]
+                    width: { size: colWidths[4], type: WidthType.DXA },
+                    children: [new Paragraph({ children: [new TextRun({ text: col5Text, size: 22, bold: true })] })]
                 };
-                if (col3Shading) col3Cell.shading = col3Shading;
-                
+                if (col5Shading) col5CellSpec.shading = col5Shading;
+
                 return new TableRow({
                     children: [
-                        // 第1欄：病歷號
                         new TableCell({
                             borders,
                             width: { size: colWidths[0], type: WidthType.DXA },
-                            children: [new Paragraph({ children: [new TextRun({ text: c.chartNo || '', size: 22 })] })]
+                            children: [new Paragraph({ children: [new TextRun({ text: col1, size: 22, bold: true })] })]
                         }),
-                        // 第2欄：空白（年齡/性別）
                         new TableCell({
                             borders,
                             width: { size: colWidths[1], type: WidthType.DXA },
-                            children: [new Paragraph({ children: [] })]
+                            children: [new Paragraph({ children: [new TextRun({ text: col2, size: 22 })] })]
                         }),
-                        // 第3欄：顏色標記（只有 MRI 和 Arthro）
-                        new TableCell(col3Cell),
-                        // 第4欄：空白（備註）
+                        new TableCell({
+                            borders,
+                            width: { size: colWidths[2], type: WidthType.DXA },
+                            children: [new Paragraph({ children: [new TextRun({ text: col3, size: 22 })] })]
+                        }),
                         new TableCell({
                             borders,
                             width: { size: colWidths[3], type: WidthType.DXA },
-                            children: [new Paragraph({ children: [] })]
+                            children: col4Lines.length ? col4Lines.map(l => mkLineP(l, { size: 18 })) : [new Paragraph({ children: [] })]
                         }),
-                        // 第5欄：日期時間類型
-                        new TableCell({
-                            borders,
-                            width: { size: colWidths[4], type: WidthType.DXA },
-                            children: [new Paragraph({ children: [new TextRun({ text: col5Text, size: 22 })] })]
-                        }),
-                        // 第6欄：空白（詳細筆記）
+                        new TableCell(col5CellSpec),
                         new TableCell({
                             borders,
                             width: { size: colWidths[5], type: WidthType.DXA },
-                            children: [new Paragraph({ children: [] })]
+                            children: col6Lines.length ? col6Lines.map(l => mkLineP(l, { size: 18 })) : [new Paragraph({ children: [] })]
                         })
                     ]
                 });
-            });
+            })];
+
+            setProgress(`✓ 匯出完成（${allCases.length} 筆）`);
             
             const table = new Table({
                 width: { size: 9360, type: WidthType.DXA },
@@ -3260,8 +3527,9 @@
             const url = URL.createObjectURL(buffer);
             const a = document.createElement('a');
             const tabName = getTabName(tab).replace(/\//g, '-');
+            const dateRange = `${formatDateForInput(statsStart).slice(5).replace('-','')}-${formatDateForInput(statsEnd).slice(5).replace('-','')}`;
             a.href = url;
-            a.download = `Procedure_list_${tabName}.docx`;
+            a.download = `Procedure_list_${tabName}_${dateRange}.docx`;
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
@@ -3516,6 +3784,7 @@
             document.getElementById('caselist-close')?.addEventListener('click', closeCaselist);
             document.getElementById('caselist-add-btn')?.addEventListener('click', caselistAddRow);
             document.getElementById('caselist-sync-btn')?.addEventListener('click', () => { syncCaselistFromCells(false); renderCaselist(); });
+            document.getElementById('caselist-bulk-load-plan-btn')?.addEventListener('click', bulkLoadCaselistPlans);
             document.getElementById('caselist-filter-status')?.addEventListener('change', renderCaselist);
             
             // 統計欄點擊事件
