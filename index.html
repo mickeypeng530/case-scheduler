@@ -3328,9 +3328,10 @@
                 if (c.chartNo) caselistByChart[c.chartNo.trim()] = c;
             });
 
-            // 批次抓 OPD patient 主表 + 該 case 最近 prev visit
-            const opdPatients = {};       // rec → patient (使用 rec 變體找到)
-            const prevVisits = {};        // rec_caseDate key → {plan, exam, date}
+            // 批次抓 OPD patient 主表 + 該 case 嚴格 < caseDate 的最近 prev visit
+            // （取前次門診 plan = 決定 procedure 那次，含預想要做的事；不取 caseDate 當日的執行後紀錄）
+            const opdPatients = {};
+            const prevVisits = {};        // rec_caseDate key → {plan, date}
             const promises = [];
             allCases.forEach((c, i) => {
                 const rec = (c.chartNo || '').trim();
@@ -3346,15 +3347,35 @@
                             } catch {}
                         }
                     }
-                    // 2. 找最近 prev visit
+                    // 2. 找 ≤ caseDate 的最近一次 visit（含當日；procedure date >= visit OPD date）
+                    //    先試 caseDate 當天 → 沒就找 patientVisitIndex 最近 < caseDate
                     const cacheKey = `${rec}__${caseDateStr}`;
                     if (!prevVisits[cacheKey]) {
-                        const res = await caselistFindVisitA(rec, caseDateStr);
-                        if (res?.date && res?.rec) {
+                        let foundRec = null, foundDate = null;
+                        for (const v of recVariants(rec)) {
                             try {
-                                const vs = await get(ref(fbDb, `opd/visits/${res.date}/${res.rec}`));
+                                // 優先 caseDate 當天 visit
+                                const exactSnap = await get(ref(fbDb, `opd/visits/${caseDateStr}/${v}`));
+                                if (exactSnap.exists()) {
+                                    foundRec = v;
+                                    foundDate = caseDateStr;
+                                    break;
+                                }
+                                // 否則找 ≤ caseDate 中最近
+                                const idxSnap = await get(ref(fbDb, `opd/patientVisitIndex/${v}`));
+                                const allDates = Object.keys(idxSnap.val() || {}).filter(d => d <= caseDateStr).sort();
+                                if (allDates.length > 0) {
+                                    foundRec = v;
+                                    foundDate = allDates[allDates.length - 1];
+                                    break;
+                                }
+                            } catch {}
+                        }
+                        if (foundRec && foundDate) {
+                            try {
+                                const vs = await get(ref(fbDb, `opd/visits/${foundDate}/${foundRec}`));
                                 const v = vs.val();
-                                if (v) prevVisits[cacheKey] = { date: res.date, plan: v.plan || '', exam: v.examEducation || '' };
+                                if (v) prevVisits[cacheKey] = { date: foundDate, plan: v.plan || '' };
                             } catch {}
                         }
                     }
@@ -3387,26 +3408,20 @@
                 return '';
             };
 
-            // 組 col 4 額外資訊（多行）
+            // 組 col 4 額外資訊（簡化：只放抗凝藥 + INR + 來源）
             const getExtraLines = (rec) => {
                 const p = opdPatients[rec];
                 if (!p) return [];
                 const lines = [];
-                // 抗凝警示（優先顯示）
                 if (p.anticoagState === 'yes' && p.anticoagulants?.length) {
                     lines.push(`🩸 ${p.anticoagulants.join(' / ')}`);
                 }
-                if (p.referrer) lines.push(p.referrer);
-                // INR
                 if (p.labs) {
-                    const m = p.labs.match(/INR[:：]?\s*(\d+(?:\.\d+)?)/i);
+                    // 抓最完整的 INR（含日期）：INR: 1.02 (26/04) 之類
+                    const m = p.labs.match(/INR[:：]?\s*(\d+(?:\.\d+)?(?:\s*\([^)]*\))?)/i);
                     if (m) lines.push(`INR: ${m[1]}`);
                 }
-                if (p.pastHistory) {
-                    // 慢性病史最多 2 行（過長截斷）
-                    const phLines = p.pastHistory.split(/\r?\n/).filter(l => l.trim());
-                    phLines.slice(0, 3).forEach(l => lines.push(l.trim().slice(0, 80)));
-                }
+                if (p.referrer) lines.push(p.referrer);
                 return lines;
             };
 
@@ -3423,7 +3438,7 @@
                     raw = prevVisits[cacheKey]?.plan || '';
                 }
                 if (!raw) return [];
-                return raw.split(/\r?\n/).filter(l => l.trim()).slice(0, 12);  // 最多 12 行
+                return raw.split(/\r?\n/).filter(l => l.trim()).slice(0, 20);  // 最多 20 行
             };
 
             // === 建表 ===
