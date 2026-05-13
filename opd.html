@@ -1407,6 +1407,8 @@
             };
             renderVisitList();
             updateClinicDateMeta();
+            // 重畫門診日下拉，讓人數即時跟隨 visit 增減
+            if (typeof renderClinicDateSelector === 'function') renderClinicDateSelector();
             // Deep-link：visits 載到後若有 pending 目標就開 modal
             if (state.pendingDeepLinkOpen) {
                 const rec = state.pendingDeepLinkOpen;
