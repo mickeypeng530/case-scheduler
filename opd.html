@@ -3221,10 +3221,11 @@
             const rec = document.getElementById('history-modal-title').textContent.match(/^📅\s+(\S+)/)?.[1];
             if (rec) state.scrollToRecord = rec;
             closeHistoryModal();
-            onClinicDateChanged(target);
-            localStorage.setItem('opd:currentClinicDate', target);
             state.currentClinicDate = target;
+            localStorage.setItem('opd:currentClinicDate', target);
+            activateTab('panel-clinic');         // 切回門診日 panel（若從病人主表來，原本看不到 visit list）
             renderClinicDateSelector();
+            onClinicDateChanged(target);
         });
 
         document.getElementById('v-modal-cancel').addEventListener('click', closeVisitModal);
