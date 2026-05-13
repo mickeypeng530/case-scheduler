@@ -692,6 +692,7 @@
             #caselist-add-btn,
             #caselist-sync-btn,
             #caselist-bulk-load-plan-btn,
+            #caselist-clean-orphan-btn,
             #caselist-status { display: none; }
 
             /* V4 — date group sticky header */
@@ -1676,6 +1677,7 @@
                     <button id="caselist-add-btn" style="padding:5px 10px; background:var(--color-info); border:none; color:white; border-radius:4px; cursor:pointer; font-size:0.82rem;">+ 新增</button>
                     <button id="caselist-sync-btn" title="從目前排程拉新案例（不會刪 list 既有的）" style="padding:5px 10px; background:var(--bg-tertiary); border:1px solid var(--border); color:var(--text-primary); border-radius:4px; cursor:pointer; font-size:0.82rem;">🔄 同步排程</button>
                     <button id="caselist-bulk-load-plan-btn" title="一次把區間內所有待做且 planScratch 為空的 row 都載入 visit A plan" style="padding:5px 10px; background:var(--bg-tertiary); border:1px solid var(--border); color:var(--text-primary); border-radius:4px; cursor:pointer; font-size:0.82rem;">⬇ 全部載入 plan</button>
+                    <button id="caselist-clean-orphan-btn" title="一鍵刪除所有「⚠ 排程已移走」row" style="padding:5px 10px; background:var(--bg-tertiary); border:1px solid var(--border); color:var(--text-primary); border-radius:4px; cursor:pointer; font-size:0.82rem;">🗑 清 orphan</button>
                     <button id="caselist-close" style="padding:5px 10px; background:transparent; border:1px solid var(--border); color:var(--text-secondary); border-radius:4px; cursor:pointer; font-size:0.82rem;">✕ 關閉</button>
                 </div>
             </div>
@@ -2839,6 +2841,25 @@
             }
         }
 
+        // 一鍵刪除所有 orphan caselist row
+        function cleanCaselistOrphans() {
+            const tab = getActiveTab();
+            if (!tab) return;
+            const list = getCaselistFor(tab.id);
+            const orphans = Object.entries(list).filter(([_, c]) => c.orphan);
+            if (orphans.length === 0) {
+                const s = document.getElementById('caselist-status');
+                if (s) s.textContent = '✓ 無 orphan row';
+                return;
+            }
+            if (!confirm(`即將刪除 ${orphans.length} 筆「⚠ 排程已移走」row。\n\n確定？`)) return;
+            orphans.forEach(([id]) => delete list[id]);
+            saveToStorage();
+            renderCaselist();
+            const s = document.getElementById('caselist-status');
+            if (s) s.textContent = `✓ 已刪除 ${orphans.length} 筆 orphan`;
+        }
+
         async function caselistAppendToVisitB(rec, dateB, content, dateA, statusEl) {
             if (!content || !content.trim()) {
                 statusEl.textContent = '內容為空，未追加';
@@ -3785,6 +3806,7 @@
             document.getElementById('caselist-add-btn')?.addEventListener('click', caselistAddRow);
             document.getElementById('caselist-sync-btn')?.addEventListener('click', () => { syncCaselistFromCells(false); renderCaselist(); });
             document.getElementById('caselist-bulk-load-plan-btn')?.addEventListener('click', bulkLoadCaselistPlans);
+            document.getElementById('caselist-clean-orphan-btn')?.addEventListener('click', cleanCaselistOrphans);
             document.getElementById('caselist-filter-status')?.addEventListener('change', renderCaselist);
             
             // 統計欄點擊事件
