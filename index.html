@@ -1944,7 +1944,10 @@
                         state.activeTabId = data.activeTabId || (state.tabs[0]?.id || null);
                         state.cellData = data.cellData || {};
                         state.caseList = data.caseList || {};
+                        // 補 case id（修「物件參考比對」斷鏈 bug）；補完寫回，idempotent 不會無限迴圈
+                        const _idsAdded = ensureCaseIds();
                         saveToLocalStorage();
+                        if (_idsAdded) saveToStorage();
                         renderTabs();
                         renderTabContent();
                         if (document.getElementById('caselist-modal')?.classList.contains('show')) {
@@ -1975,6 +1978,7 @@
                 state.activeTabId = parsed.activeTabId || (state.tabs[0]?.id || null);
                 state.cellData = parsed.cellData || {};
                 state.caseList = parsed.caseList || {};
+                ensureCaseIds(); // 離線時也補 id；寫回等 Firebase 連上後統一處理
             }
         }
 
@@ -2041,6 +2045,27 @@
 
         function formatDateForInput(date) {
             return new Date(date).toISOString().split('T')[0];
+        }
+
+        // 排程 case 穩定 id：取代「物件參考比對」(c === oldCase)，跨 Firebase 同步也不會斷
+        function genCaseId() {
+            return 'cs_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+        }
+
+        // 一次性 migration：補上所有排程 case 缺少的 id。回傳是否有變動
+        function ensureCaseIds() {
+            let changed = false;
+            Object.values(state.cellData || {}).forEach(cell => {
+                if (!cell) return;
+                const cases = Array.isArray(cell.cases) ? cell.cases : Object.values(cell.cases || {});
+                cases.forEach(c => {
+                    if (c && !c.isEmpty && c.type !== 'slot' && !c.id) {
+                        c.id = genCaseId();
+                        changed = true;
+                    }
+                });
+            });
+            return changed;
         }
 
         // 找到該日期那週的週一
@@ -2669,13 +2694,37 @@
                 added++;
             });
 
-            if (added > 0 || reconciled > 0 || orphans > 0) saveToStorage();
+            // 5. dedup：同 (date, chartNo, type) 同時有「非 orphan」+「orphan」→ 刪 orphan
+            //    （清掉早期排程 case 重複 push、後來修掉所遺留的殘影 row）
+            let deduped = 0;
+            const liveKeys = new Set();
+            Object.values(list).forEach(r => {
+                if (r.orphan || !(r.chartNo || '').trim()) return;
+                liveKeys.add(`${r.date}|${(r.chartNo || '').trim()}|${r.type}`);
+            });
+            Object.entries(list).forEach(([rowId, r]) => {
+                if (!r.orphan || !(r.chartNo || '').trim()) return;
+                const key = `${r.date}|${(r.chartNo || '').trim()}|${r.type}`;
+                if (!liveKeys.has(key)) return;
+                // 把 orphan 上的 planScratch 救回 live row（若 live 沒有）
+                if ((r.planScratch || '').trim()) {
+                    const live = Object.values(list).find(lr => !lr.orphan
+                        && (lr.chartNo || '').trim() === (r.chartNo || '').trim()
+                        && lr.date === r.date && lr.type === r.type);
+                    if (live && !(live.planScratch || '').trim()) live.planScratch = r.planScratch;
+                }
+                delete list[rowId];
+                deduped++;
+            });
+
+            if (added > 0 || reconciled > 0 || orphans > 0 || deduped > 0) saveToStorage();
             if (!silent) {
                 const s = document.getElementById('caselist-status');
                 if (s) {
                     const parts = [];
                     if (added > 0) parts.push(`新增 ${added}`);
                     if (reconciled > 0) parts.push(`同步移動 ${reconciled}`);
+                    if (deduped > 0) parts.push(`合併重複 ${deduped}`);
                     if (orphans > 0) parts.push(`⚠ 排程已移走 ${orphans}`);
                     s.textContent = parts.length ? '✓ ' + parts.join(' · ') : '✓ 已是最新';
                 }
@@ -3945,7 +3994,9 @@
                         state.activeTabId = data.activeTabId || (state.tabs[0]?.id || null);
                         state.cellData = data.cellData || {};
                         state.caseList = data.caseList || {};
+                        const _idsAdded = ensureCaseIds();
                         saveToLocalStorage();
+                        if (_idsAdded) saveToStorage();
                         renderTabs();
                         renderTabContent();
                     }
@@ -4348,9 +4399,13 @@
 
             // 刪除按鈕
             document.getElementById('modal-delete').addEventListener('click', () => {
-                if (editingCase && editingCase._originalIndex !== undefined) {
+                if (editingCase) {
                     const cellKey = state.selectedCell;
-                    deleteCase(cellKey, editingCase._originalIndex);
+                    if (editingCase.id) {
+                        deleteCaseById(cellKey, editingCase.id);
+                    } else if (editingCase._originalIndex !== undefined) {
+                        deleteCase(cellKey, editingCase._originalIndex);
+                    }
                     document.getElementById('case-modal').classList.remove('show');
                     editingCase = null;
                 }
@@ -4425,6 +4480,9 @@
                 }
             }
 
+            // 穩定 id：編輯時沿用舊 id，新增時產生
+            caseData.id = (editingCase && editingCase.id) || genCaseId();
+
             if (!state.cellData[state.selectedCell]) {
                 state.cellData[state.selectedCell] = { blocked: false, blockedReason: '', cases: [] };
             }
@@ -4439,8 +4497,16 @@
             // 過濾掉空位，只保留真正案例
             let realCases = cellCases.filter(c => c && c.type !== 'slot' && !c.isEmpty);
 
-            if (editingCase !== null && editingCase._originalIndex !== undefined) {
-                // 編輯：找到原本的案例並替換
+            if (editingCase !== null && editingCase.id) {
+                // 編輯：用穩定 id 找原案例（不靠物件參考，跨 Firebase 同步也不會斷）
+                const realIndex = realCases.findIndex(c => c && c.id === editingCase.id);
+                if (realIndex !== -1) {
+                    realCases[realIndex] = caseData;
+                } else {
+                    realCases.push(caseData);
+                }
+            } else if (editingCase !== null && editingCase._originalIndex !== undefined) {
+                // legacy fallback：舊 case 無 id（理論上 editCase 已補，保險用）
                 const oldCase = cellCases[editingCase._originalIndex];
                 const realIndex = realCases.findIndex(c => c === oldCase);
                 if (realIndex !== -1) {
@@ -4486,6 +4552,23 @@
             document.getElementById('blocked-modal').classList.remove('show');
         }
 
+        // 用穩定 id 刪除（不靠物件參考 / index，跨 Firebase 同步也正確）
+        function deleteCaseById(cellKey, id) {
+            const cellData = state.cellData[cellKey];
+            if (!cellData) return;
+            let cases = cellData.cases;
+            if (!Array.isArray(cases)) {
+                cases = Object.values(cases || {});
+                state.cellData[cellKey].cases = cases;
+            }
+            const idx = cases.findIndex(c => c && c.id === id);
+            if (idx !== -1) {
+                cases.splice(idx, 1);
+                saveToStorage();
+                renderTabContent();
+            }
+        }
+
         function deleteCase(cellKey, index) {
             const cellData = state.cellData[cellKey];
             if (!cellData) return;
@@ -4528,7 +4611,8 @@
             if (index >= realCases.length) return;
             
             const caseData = realCases[index];
-            
+            if (caseData && !caseData.id) caseData.id = genCaseId(); // 補 id（舊 case）
+
             // 找到在原始陣列中的位置
             const originalIndex = cases.findIndex(c => c === caseData);
             
