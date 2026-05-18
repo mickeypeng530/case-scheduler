@@ -1237,6 +1237,32 @@
             font-family: 'Noto Sans TC', monospace;
             font-size: 0.82rem;
             min-height: 80px;
+            box-sizing: border-box;
+        }
+
+        /* 手機:備註區編輯/儲存/取消按鈕加大,改換行避免擠 */
+        @media (max-width: 768px) {
+            .header-notes .hn-title {
+                flex-wrap: wrap;
+                row-gap: 8px;
+            }
+            .header-notes .hn-title > span {
+                display: flex;
+                gap: 8px;
+                margin-left: auto;
+            }
+            .header-notes .hn-edit {
+                padding: 10px 18px;
+                font-size: 0.95rem;
+                min-height: 40px;
+                min-width: 64px;
+                border-radius: 6px;
+            }
+            .header-notes textarea {
+                font-size: 16px;        /* ≥16px iOS 即使解鎖也不會自動 zoom */
+                min-height: 120px;
+                padding: 10px;
+            }
         }
 
         /* 在窄螢幕降低欄寬 */
